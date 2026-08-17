@@ -61,15 +61,36 @@ const codeLimiter = rateLimit({
 });
 
 /* ------------------------------------------------------------------ */
+/* Storage readiness                                                   */
+/* ------------------------------------------------------------------ */
+
+// The server starts listening immediately and connects to the database in the
+// background. A database that is unreachable then shows up as a clear 503 and
+// a readable /health payload, instead of every request hanging until the
+// browser gives up.
+const storage = { ready: false, error: null };
+
+function requireStorage(_req, res, next) {
+  if (storage.ready) return next();
+  return res.status(503).json({
+    code: 'storage_unavailable',
+    message: storage.error
+      ? 'The service cannot reach its database. Please try again shortly.'
+      : 'The service is still starting. Please try again in a moment.',
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Routes                                                              */
 /* ------------------------------------------------------------------ */
 
 app.get('/health', (_req, res) => {
-  res.json({
-    status: 'ok',
+  res.status(storage.ready || db.DB_MODE === 'memory' ? 200 : 503).json({
+    status: storage.ready ? 'ok' : 'degraded',
     uptimeSeconds: Math.round(process.uptime()),
     env: NODE_ENV,
-    storage: db.DB_MODE,
+    storage: storage.ready ? db.DB_MODE : storage.error ? 'error' : 'connecting',
+    storageError: storage.error,
     emailMode: EMAIL_MODE,
     timestamp: new Date().toISOString(),
   });
@@ -83,6 +104,9 @@ app.get('/api/capabilities', (_req, res) => {
     storage: db.DB_MODE,
   });
 });
+
+app.use('/api/auth', requireStorage);
+app.use('/api/proposal', requireStorage);
 
 registerAuthRoutes(app, { authLimiter, codeLimiter });
 
@@ -135,13 +159,14 @@ app.use((error, _req, res, _next) => {
 /* ------------------------------------------------------------------ */
 
 async function start() {
-  const { mode } = await db.initDb();
+  // Fail fast on a misconfiguration we can detect without any I/O.
+  db.assertStorageAllowed();
 
   app.listen(PORT, () => {
     console.info(`Proposal API listening on :${PORT} (${NODE_ENV})`);
-    console.info(`Storage:         ${mode}`);
+    console.info(`Storage:         ${db.DB_MODE} (connecting…)`);
     console.info(`Email transport: ${EMAIL_DESCRIPTION}`);
-    if (mode === 'memory') {
+    if (db.DB_MODE === 'memory') {
       console.warn('No DATABASE_URL — accounts live in memory and vanish on restart.');
     }
     if (EMAIL_MODE === 'dev') {
@@ -153,7 +178,19 @@ async function start() {
     if (IS_PRODUCTION && ALLOWED_ORIGINS.length === 0) {
       console.warn('ALLOWED_ORIGINS is empty — every cross-origin browser request will be rejected.');
     }
+    console.info(`CORS allowlist:  ${ALLOWED_ORIGINS.join(', ') || '(empty)'}`);
   });
+
+  try {
+    const { mode } = await db.initDb();
+    storage.ready = true;
+    console.info(`Storage ready:   ${mode}`);
+  } catch (error) {
+    storage.error = error.message;
+    console.error('DATABASE CONNECTION FAILED:', error.message);
+    console.error('The API is listening but every data route will answer 503 until this is fixed.');
+    console.error('Check DATABASE_URL — it must be a direct postgresql:// connection string.');
+  }
 }
 
 start().catch((error) => {

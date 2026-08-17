@@ -64,11 +64,17 @@ async function getPool() {
   if (pool) return pool;
   const { default: pg } = await import('pg');
   const isLocal = /localhost|127\.0\.0\.1/.test(DATABASE_URL);
-  pool = new pg.Pool({
+pool = new pg.Pool({
     connectionString: DATABASE_URL,
     ssl: isLocal ? false : { rejectUnauthorized: false },
     max: 10,
     idleTimeoutMillis: 30_000,
+    // Without this, an unreachable host makes every query hang forever and the
+    // symptom reaches the user as "the server never answered".
+    connectionTimeoutMillis: 10_000,
+  });
+  pool.on('error', (error) => {
+    console.error('Postgres pool error:', error.message);
   });
   return pool;
 }
@@ -94,13 +100,16 @@ const memory = {
 /* Public interface                                                    */
 /* ------------------------------------------------------------------ */
 
-export async function initDb() {
-  if (DB_MODE === 'memory') {
-    if (IS_PRODUCTION) {
-      throw new Error('DATABASE_URL is required in production — refusing to start on memory storage.');
-    }
-    return { mode: 'memory' };
+export function assertStorageAllowed() {
+  if (DB_MODE === 'memory' && IS_PRODUCTION) {
+    throw new Error(
+      'DATABASE_URL is required in production — refusing to start on memory storage.'
+    );
   }
+}
+
+export async function initDb() {
+  if (DB_MODE === 'memory') return { mode: 'memory' };
   await query(SCHEMA);
   return { mode: 'postgres' };
 }

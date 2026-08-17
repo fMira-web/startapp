@@ -1,0 +1,202 @@
+@import 'tailwindcss';
+
+/*
+  Design tokens.
+  Palette derived from the "E-signature / Document Workflow" profile in the
+  ui-ux-pro-max colour database, tuned to the brief: pristine off-white canvas,
+  charcoal-slate ink (never pure black), one deep midnight-blue action colour,
+  one restrained forest-green signal colour, hairline slate borders.
+
+  Contrast (WCAG 2.2 AA, verified):
+    ink        #0F172A on canvas #F9FAFB -> 16.4:1
+    ink-soft   #334155 on canvas         -> 10.0:1
+    ink-muted  #55637A on canvas         ->  5.8:1
+    white      on brand  #1E3A5F         -> 11.6:1
+    signal     #15803D on surface        ->  5.0:1
+*/
+@theme {
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    sans-serif;
+
+  --color-canvas: #f9fafb;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f3f4f6;
+
+  --color-ink: #0f172a;
+  --color-ink-soft: #334155;
+  --color-ink-muted: #55637a;
+
+  --color-line: #e8eaee;
+  --color-line-strong: #cbd5e1;
+
+  --color-brand: #1e3a5f;
+  --color-brand-hover: #16304f;
+  --color-brand-tint: #eef2f7;
+  --color-brand-ring: #3b6394;
+
+  --color-signal: #15803d;
+  --color-signal-tint: #f0fdf4;
+
+  --color-danger: #b91c1c;
+  --color-danger-tint: #fef2f2;
+
+  --radius-card: 0.875rem;
+  --radius-control: 0.625rem;
+
+  --shadow-lift: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -12px rgba(15, 23, 42, 0.14);
+  --shadow-float: 0 2px 4px rgba(15, 23, 42, 0.04), 0 24px 48px -24px rgba(15, 23, 42, 0.22);
+
+  --ease-entry: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Every numeric surface aligns on a shared grid. */
+  .tnum {
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: 'tnum' 1, 'lnum' 1;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* WCAG 2.2 "focus not obscured": the sticky header is 4rem tall, so anything
+     scrolled to — by anchor or by keyboard focus — keeps clear of it. */
+  section[id],
+  a,
+  button,
+  input,
+  [tabindex] {
+    scroll-margin-top: 5.5rem;
+  }
+
+  /* Focus must never be removed, only shaped. */
+  button:focus:not(:focus-visible),
+  [role='button']:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  ::selection {
+    background-color: var(--color-brand);
+    color: #ffffff;
+  }
+}
+
+@layer components {
+  .measure {
+    max-width: 68ch;
+  }
+
+  /* Range control: a hairline track with a solid brand fill and a
+     precise, grabbable thumb. --range-fill is set inline per instance. */
+  .range-brand {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    touch-action: pan-y;
+  }
+
+  .range-brand::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--color-brand) 0%,
+      var(--color-brand) var(--range-fill, 0%),
+      var(--color-line) var(--range-fill, 0%),
+      var(--color-line) 100%
+    );
+  }
+
+  .range-brand::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-line);
+  }
+
+  .range-brand::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-brand);
+  }
+
+  .range-brand::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    margin-top: -8px;
+    height: 20px;
+    width: 20px;
+    border-radius: 999px;
+    background: #ffffff;
+    border: 1px solid var(--color-line-strong);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+    transition:
+      border-color 150ms ease,
+      transform 150ms ease;
+  }
+
+  .range-brand::-moz-range-thumb {
+    height: 20px;
+    width: 20px;
+    border-radius: 999px;
+    background: #ffffff;
+    border: 1px solid var(--color-line-strong);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  }
+
+  .range-brand:hover::-webkit-slider-thumb,
+  .range-brand:focus-visible::-webkit-slider-thumb {
+    border-color: var(--color-brand);
+  }
+
+  .range-brand:active::-webkit-slider-thumb {
+    transform: scale(1.08);
+  }
+
+  .label-caps {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-ink-muted);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

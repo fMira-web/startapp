@@ -1,0 +1,164 @@
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+import * as db from './db.js';
+import { EMAIL_MODE, EMAIL_DESCRIPTION } from './mailer.js';
+import { registerAuthRoutes, requireAuth } from './auth.js';
+
+const PORT = Number(process.env.PORT ?? 4000);
+const NODE_ENV = process.env.NODE_ENV ?? 'development';
+const IS_PRODUCTION = NODE_ENV === 'production';
+
+// Comma-separated list. In production an empty list means "reject everything",
+// which is the safe failure mode for a CORS allowlist.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 1); // Render terminates TLS in front of the app.
+app.use(express.json({ limit: '64kb' }));
+app.use(cookieParser());
+
+// credentials:true is required — the session travels in an httpOnly cookie.
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true); // same-origin / server-to-server
+      if (!IS_PRODUCTION && /^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
+      if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+      return callback(new Error(`Origin not allowed: ${origin}`));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type'],
+    maxAge: 86400,
+  })
+);
+
+/* ------------------------------------------------------------------ */
+/* Rate limits                                                         */
+/* ------------------------------------------------------------------ */
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { code: 'rate_limited', message: 'Too many attempts. Try again in a few minutes.' },
+});
+
+const codeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { code: 'rate_limited', message: 'Too many attempts. Try again in a few minutes.' },
+});
+
+/* ------------------------------------------------------------------ */
+/* Routes                                                              */
+/* ------------------------------------------------------------------ */
+
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    uptimeSeconds: Math.round(process.uptime()),
+    env: NODE_ENV,
+    storage: db.DB_MODE,
+    emailMode: EMAIL_MODE,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/** Lets the UI describe the environment honestly (e.g. dev codes on screen). */
+app.get('/api/capabilities', (_req, res) => {
+  res.json({
+    email: EMAIL_MODE !== 'dev' || !IS_PRODUCTION,
+    emailMode: EMAIL_MODE,
+    storage: db.DB_MODE,
+  });
+});
+
+registerAuthRoutes(app, { authLimiter, codeLimiter });
+
+/** Recording acceptance now depends on the session, not on a one-time code. */
+app.post('/api/proposal/accept', requireAuth, async (req, res) => {
+  try {
+    const { proposalId, total, currency, lines } = req.body ?? {};
+    if (typeof proposalId !== 'string' || !Number.isFinite(Number(total))) {
+      return res.status(400).json({ code: 'bad_input', message: 'Invalid acceptance payload.' });
+    }
+
+    const record = await db.recordAcceptance({
+      userId: req.session.sub,
+      proposalId: proposalId.slice(0, 64),
+      totalCents: Math.round(Number(total) * 100),
+      currency: typeof currency === 'string' ? currency.slice(0, 8) : 'USD',
+      lineItems: Array.isArray(lines) ? lines.slice(0, 200) : [],
+    });
+
+    return res.json({ recorded: true, acceptedAt: record.accepted_at });
+  } catch (error) {
+    console.error('Acceptance error:', error);
+    return res.status(500).json({ code: 'server_error', message: 'Could not record acceptance.' });
+  }
+});
+
+app.get('/api/proposal/acceptance', requireAuth, async (req, res) => {
+  try {
+    const record = await db.latestAcceptance({
+      userId: req.session.sub,
+      proposalId: String(req.query?.proposalId ?? '').slice(0, 64),
+    });
+    return res.json({ acceptance: record ? { acceptedAt: record.accepted_at } : null });
+  } catch (error) {
+    console.error('Acceptance lookup error:', error);
+    return res.status(500).json({ code: 'server_error', message: 'Could not read acceptance.' });
+  }
+});
+
+app.use((error, _req, res, _next) => {
+  if (error?.message?.startsWith('Origin not allowed')) {
+    return res.status(403).json({ code: 'origin_forbidden', message: 'Origin not allowed.' });
+  }
+  console.error('Unhandled error:', error);
+  return res.status(500).json({ code: 'server_error', message: 'Something went wrong.' });
+});
+
+/* ------------------------------------------------------------------ */
+/* Boot                                                                */
+/* ------------------------------------------------------------------ */
+
+async function start() {
+  const { mode } = await db.initDb();
+
+  app.listen(PORT, () => {
+    console.info(`Proposal API listening on :${PORT} (${NODE_ENV})`);
+    console.info(`Storage:         ${mode}`);
+    console.info(`Email transport: ${EMAIL_DESCRIPTION}`);
+    if (mode === 'memory') {
+      console.warn('No DATABASE_URL — accounts live in memory and vanish on restart.');
+    }
+    if (EMAIL_MODE === 'dev') {
+      console.warn('No email provider configured — codes are printed here and shown in the UI.');
+    }
+    if (!process.env.JWT_SECRET) {
+      console.warn('No JWT_SECRET — a random one was generated; every restart signs everyone out.');
+    }
+    if (IS_PRODUCTION && ALLOWED_ORIGINS.length === 0) {
+      console.warn('ALLOWED_ORIGINS is empty — every cross-origin browser request will be rejected.');
+    }
+  });
+}
+
+start().catch((error) => {
+  console.error('Failed to start:', error.message);
+  process.exit(1);
+});
+
+export default app;

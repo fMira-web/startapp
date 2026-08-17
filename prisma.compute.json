@@ -1,0 +1,13 @@
+{
+  "app": {
+    "name": "proposal-auth-api",
+    "root": "backend",
+    "framework": "bun",
+    "entry": "server.js",
+    "httpPort": 3000,
+    "build": {
+      "command": null,
+      "outputDirectory": "."
+    }
+  }
+}

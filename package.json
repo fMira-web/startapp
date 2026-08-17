@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "echo \"no linter configured\""
+    "lint": "echo \"no linter configured\"",
+    "api:install": "npm --prefix backend install --omit=dev",
+    "start": "npm --prefix backend start"
   },
   "dependencies": {
     "framer-motion": "^12.0.0",

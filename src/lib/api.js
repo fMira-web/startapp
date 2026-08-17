@@ -28,7 +28,9 @@ class ApiError extends Error {
  * Every call sends credentials: the session is an httpOnly cookie, so it is
  * never readable from JavaScript and never stored by this app.
  */
-async function request(path, { method = 'POST', body, timeoutMs = 15000 } = {}) {
+// Generous by default: a free-tier host that has spun down needs 30-60s to
+// wake, and a timeout there reads to the user as "broken" rather than "slow".
+async function request(path, { method = 'POST', body, timeoutMs = 60000 } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -44,7 +46,10 @@ async function request(path, { method = 'POST', body, timeoutMs = 15000 } = {}) 
   } catch (error) {
     clearTimeout(timer);
     if (error.name === 'AbortError') {
-      throw new ApiError('The request timed out. Please try again.', { code: 'timeout' });
+      throw new ApiError(
+        'The server is taking longer than usual — it may be waking up. Please try again.',
+        { code: 'timeout' }
+      );
     }
     throw new ApiError('Could not reach the server. Check your connection.', { code: 'network' });
   }
@@ -117,7 +122,7 @@ export function logout() {
 export async function fetchCurrentUser() {
   if (DEMO_MODE) return demo.fetchCurrentUser();
   try {
-    const payload = await request('/api/auth/me', { method: 'GET', timeoutMs: 8000 });
+    const payload = await request('/api/auth/me', { method: 'GET', timeoutMs: 60000 });
     return payload.user ?? null;
   } catch (error) {
     if (error.status === 401) return null;
@@ -139,7 +144,7 @@ export async function fetchAcceptance(proposalId) {
   try {
     const payload = await request(
       `/api/proposal/acceptance?proposalId=${encodeURIComponent(proposalId)}`,
-      { method: 'GET', timeoutMs: 8000 }
+      { method: 'GET', timeoutMs: 60000 }
     );
     return payload.acceptance ?? null;
   } catch {
@@ -154,7 +159,7 @@ export async function fetchAcceptance(proposalId) {
 export async function getCapabilities() {
   if (DEMO_MODE) return demo.getCapabilities();
   try {
-    const payload = await request('/api/capabilities', { method: 'GET', timeoutMs: 6000 });
+    const payload = await request('/api/capabilities', { method: 'GET', timeoutMs: 30000 });
     return { ...payload, reachable: true };
   } catch {
     return { email: true, emailMode: 'unknown', storage: 'unknown', reachable: false };

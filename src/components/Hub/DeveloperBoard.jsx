@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Star, BriefcaseBusiness } from 'lucide-react';
+import { MapPin, BriefcaseBusiness, PlayCircle } from 'lucide-react';
 import { useMeta } from '../../store/useQuoteStore';
 import { ROLES, ROLE_BY_ID } from '../../data/hubData';
+import { profileFor } from '../../data/developerProfiles';
 import { formatCurrency } from '../../lib/format';
 import { ICON, STROKE } from '../../lib/icons';
+import RatingStars from './RatingStars';
 
 function Avatar({ name }) {
   const initials = name
@@ -22,18 +24,38 @@ function Avatar({ name }) {
   );
 }
 
-export function DeveloperCard({ developer, action = null, highlight = false }) {
+export function DeveloperCard({ developer, action = null, highlight = false, onOpen = null }) {
   const meta = useMeta();
   const role = ROLE_BY_ID[developer.role];
+  const profile = profileFor(developer.id);
+  const clickable = typeof onOpen === 'function';
 
   return (
-    <div
+    <motion.div
+      whileHover={clickable ? { y: -3 } : undefined}
+      transition={{ type: 'spring', stiffness: 380, damping: 28 }}
       className={`flex h-full flex-col rounded-card border bg-surface p-5 transition-colors duration-200 ${
         highlight ? 'border-brand/45' : 'border-line hover:border-line-strong'
-      }`}
+      } ${clickable ? 'hover:shadow-[var(--shadow-lift)]' : ''}`}
     >
-      <div className="flex items-start gap-3">
-        <Avatar name={developer.full_name} />
+      <button
+        type="button"
+        onClick={() => onOpen?.(developer)}
+        disabled={!clickable}
+        aria-label={clickable ? `Открыть профиль: ${developer.full_name}` : undefined}
+        className="flex items-start gap-3 rounded-control text-left enabled:cursor-pointer"
+      >
+        <span className="relative">
+          <Avatar name={developer.full_name} />
+          {profile.videoIntro && (
+            <span
+              aria-hidden="true"
+              className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-surface text-brand ring-1 ring-line"
+            >
+              <PlayCircle size={14} strokeWidth={2} />
+            </span>
+          )}
+        </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[0.9375rem] font-semibold tracking-[-0.01em] text-ink">
             {developer.full_name}
@@ -41,15 +63,10 @@ export function DeveloperCard({ developer, action = null, highlight = false }) {
           <p className="truncate text-xs text-ink-muted">{developer.headline}</p>
         </div>
         <span className="tnum flex shrink-0 items-center gap-1 text-sm font-medium text-ink">
-          <Star
-            size={ICON.xs}
-            strokeWidth={STROKE.regular}
-            aria-hidden="true"
-            className="text-signal"
-          />
+          <RatingStars value={Number(developer.rating)} size={13} />
           {Number(developer.rating).toFixed(1)}
         </span>
-      </div>
+      </button>
 
       <p className="mt-3 text-[0.8125rem] leading-relaxed text-ink-muted">{developer.stack}</p>
 
@@ -76,13 +93,23 @@ export function DeveloperCard({ developer, action = null, highlight = false }) {
           </p>
           <p className="text-xs text-ink-muted">за час · {role?.short ?? developer.role}</p>
         </div>
-        {action}
+        {action ?? (
+          clickable && (
+            <button
+              type="button"
+              onClick={() => onOpen(developer)}
+              className="min-h-9 cursor-pointer rounded-control border border-line px-3 text-[0.8125rem] font-medium text-ink-soft transition-colors duration-150 hover:border-line-strong hover:text-ink"
+            >
+              Профиль и работы
+            </button>
+          )
+        )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
-export default function DeveloperBoard({ developers, footerFor = null }) {
+export default function DeveloperBoard({ developers, footerFor = null, onOpen = null }) {
   const [role, setRole] = useState('all');
 
   const visible = useMemo(
@@ -107,8 +134,9 @@ export default function DeveloperBoard({ developers, footerFor = null }) {
           Кто может взять этот проект
         </h2>
         <p className="measure text-[0.9375rem] leading-relaxed text-ink-muted">
-          Ставки указаны в сумах за час и соответствуют уровню рынка Узбекистана. Исполнитель
-          получает деньги после того, как вы примете работу.
+          Нажмите на карточку — откроются CV, видео-визитка, работы и отзывы. Ставки указаны в
+          сумах за час и соответствуют уровню рынка Узбекистана. Исполнитель получает деньги
+          после того, как вы примете работу.
         </p>
       </div>
 
@@ -143,6 +171,7 @@ export default function DeveloperBoard({ developers, footerFor = null }) {
           <DeveloperCard
             key={developer.id}
             developer={developer}
+            onOpen={onOpen}
             action={footerFor ? footerFor(developer) : null}
           />
         ))}

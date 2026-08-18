@@ -267,31 +267,79 @@ function requireSession() {
   return session;
 }
 
-function seedBids(project) {
-  const offers = [
-    { devId: 'dev-aziz', factor: 1.0, days: 28, message: 'Веду проект целиком. Payme и Click подключал шесть раз, оплату сдам на второй неделе.' },
-    { devId: 'dev-jasur', factor: 0.92, days: 35, message: 'Готов взять со скидкой — сейчас освободился слот. Сделаю на Laravel + Vue.' },
-    { devId: 'dev-sanjar', factor: 1.06, days: 24, message: 'Возьму бэкенд и интеграции, фронт закрою вместе с Диёрой. Срок сжатый, но реальный.' },
-  ];
-  for (const offer of offers) {
-    if (!devById(offer.devId)) continue;
+/* Отклики собираются под конкретный проект: цена исполнителя зависит от его
+   ставки, рейтинга и того, попадает ли его роль в запрошенную команду.
+   Одинаковых цифр на доске больше нет. */
+
+const PITCHES = [
+  'Веду проект целиком: от базы до запуска на домене. Каждую пятницу — демо.',
+  'Свободен со следующей недели. Сдам по частям, чтобы вы видели прогресс.',
+  'Похожий проект делал дважды, поэтому срок беру с запасом — успею раньше.',
+  'Готов начать завтра. Оплату и интеграции беру на себя.',
+  'Возьму со скидкой: сейчас освободился слот в графике.',
+  'Сжатый срок реальный, но нужна быстрая обратная связь по макетам.',
+  'Сделаю аккуратно и с документацией — потом легко передать другому.',
+];
+
+/** Детерминированный «случай»: одинаковый вход даёт одинаковый разброс. */
+function jitter(seed, spread) {
+  let hash = 0;
+  const text = String(seed);
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) % 100_000;
+  }
+  return 1 + ((hash % 1000) / 1000 - 0.5) * 2 * spread;
+}
+
+function priceFor(developer, project, roleIds) {
+  const wanted = roleIds?.length ? roleIds.includes(developer.role) : true;
+  // Дорогой специалист просит больше, новичок сбивает цену, чужая роль —
+  // берётся за часть работы и называет меньшую сумму.
+  const rateWeight = 0.72 + (Number(developer.rate_hour) / 155_000) * 0.42;
+  const ratingWeight = 0.9 + (Number(developer.rating) - 4.5) * 0.14;
+  const scopeWeight = wanted ? 1 : 0.62;
+  const noise = jitter(`${developer.id}:${project.id}`, 0.09);
+  const amount = Number(project.budget) * rateWeight * ratingWeight * scopeWeight * noise;
+  return Math.max(500_000, Math.round(amount / 100_000) * 100_000);
+}
+
+function daysFor(developer, project) {
+  const base = (project.weeks ?? 4) * 7;
+  const speed = jitter(`${developer.id}:days:${project.id}`, 0.3);
+  return Math.max(5, Math.round(base * speed));
+}
+
+function seedBids(project, roleIds = []) {
+  const wanted = roleIds?.length ? roleIds : null;
+  const pool = hub.developers
+    .filter((dev) => dev.available !== false)
+    .filter((dev) => (wanted ? wanted.includes(dev.role) : true));
+  const candidates = (pool.length >= 3 ? pool : hub.developers)
+    .slice()
+    .sort((a, b) => jitter(`${a.id}:${project.id}`, 1) - jitter(`${b.id}:${project.id}`, 1))
+    .slice(0, 4);
+
+  candidates.forEach((developer, index) => {
     hub.bids.push({
       id: nextId('bid'),
       project_id: project.id,
-      dev_id: offer.devId,
-      amount: Math.round(project.budget * offer.factor),
-      days: offer.days,
-      message: offer.message,
+      dev_id: developer.id,
+      amount: priceFor(developer, project, roleIds),
+      days: daysFor(developer, project),
+      message: PITCHES[(index + project.id.length) % PITCHES.length],
       status: 'pending',
       created_at: new Date().toISOString(),
     });
-  }
+  });
 }
 
 export async function createHubProject(input) {
   const user = requireSession();
   const existing = hub.projects.find(
-    (project) => project.owner_id === user.id && project.proposal_id === input.proposalId
+    (project) =>
+      project.owner_id === user.id &&
+      project.proposal_id === input.proposalId &&
+      project.status !== 'archived'
   );
   if (existing) return settle({ project: existing, reused: true }, 200);
 
@@ -305,14 +353,56 @@ export async function createHubProject(input) {
     currency: input.currency ?? 'UZS',
     weeks: input.weeks ?? null,
     status: 'open',
+    role_ids: input.roleIds ?? [],
     line_items: JSON.stringify(input.lines ?? []),
     created_at: new Date().toISOString(),
   };
   hub.projects.push(project);
-  addEvent(project.id, 'created', 'Предложение принято, проект опубликован в Центре.', 'client');
-  seedBids(project);
+  addEvent(project.id, 'created', 'Задача опубликована в Центре проектов.', 'client');
+  seedBids(project, input.roleIds ?? []);
   addEvent(project.id, 'bids', 'Поступили первые отклики от исполнителей.', 'system');
   return settle({ project }, 400);
+}
+
+/** Закрывает доску: проект уходит в архив, можно публиковать новую задачу. */
+export async function closeProject(projectId) {
+  const project = hub.projects.find((entry) => entry.id === projectId);
+  if (!project) throw new DemoError('Проект не найден.', { status: 404, code: 'not_found' });
+  project.status = 'archived';
+  project.archived_at = new Date().toISOString();
+  addEvent(projectId, 'archived', 'Сделка закрыта, проект перенесён в архив.', 'client');
+  return settle({ project }, 250);
+}
+
+/** Оценка исполнителя после выплаты: двигает его публичный рейтинг. */
+export async function rateDeveloper(projectId, { rating, comment } = {}) {
+  const deal = hub.deals.filter((entry) => entry.project_id === projectId).at(-1);
+  if (!deal) throw new DemoError('Сделка не найдена.', { status: 404, code: 'not_found' });
+  if (deal.status !== 'released') {
+    throw new DemoError('Оценить можно только после выплаты.', { code: 'bad_state' });
+  }
+  const value = Math.max(1, Math.min(5, Math.round(Number(rating) || 0)));
+  if (!value) throw new DemoError('Поставьте оценку от 1 до 5.', { code: 'bad_input' });
+
+  deal.client_rating = value;
+  deal.client_comment = comment?.trim() || null;
+  deal.rated_at = new Date().toISOString();
+
+  const developer = devById(deal.dev_id);
+  if (developer) {
+    const count = Math.max(1, Number(developer.projects_done) || 1);
+    const next = (Number(developer.rating) * count + value) / (count + 1);
+    developer.rating = Math.round(next * 10) / 10;
+    developer.projects_done = count + 1;
+  }
+
+  addEvent(
+    projectId,
+    'rated',
+    `Заказчик поставил оценку ${value} из 5${deal.client_comment ? `: «${deal.client_comment}»` : '.'}`,
+    'client'
+  );
+  return settle({ deal: { ...deal, developer: devById(deal.dev_id) } }, 350);
 }
 
 export async function fetchHubProjects() {

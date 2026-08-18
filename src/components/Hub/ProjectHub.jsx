@@ -6,6 +6,7 @@ import {
   CircleDot,
   Handshake,
   Loader2,
+  Plus,
   RefreshCw,
   Users,
 } from 'lucide-react';
@@ -22,6 +23,8 @@ import {
 import { ICON, STROKE } from '../../lib/icons';
 import DeveloperBoard from './DeveloperBoard';
 import DealPanel from './DealPanel';
+import DeveloperProfile from './DeveloperProfile';
+import NewProjectForm from './NewProjectForm';
 
 function StatusPill({ status }) {
   const entry = PROJECT_STATUS[status] ?? PROJECT_STATUS.open;
@@ -180,7 +183,7 @@ function BudgetBreakdown({ project, developers }) {
   );
 }
 
-function BidRow({ bid, canAccept, onAccept, pending }) {
+function BidRow({ bid, canAccept, onAccept, pending, onOpenProfile }) {
   const meta = useMeta();
   const developer = bid.developer;
   const role = developer ? ROLE_BY_ID[developer.role] : null;
@@ -197,14 +200,20 @@ function BidRow({ bid, canAccept, onAccept, pending }) {
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-[0.9375rem] font-semibold text-ink">
+        <button
+          type="button"
+          onClick={() => developer && onOpenProfile?.(developer)}
+          disabled={!developer || !onOpenProfile}
+          className="min-w-0 rounded-control text-left enabled:cursor-pointer"
+        >
+          <p className="text-[0.9375rem] font-semibold text-ink underline-offset-4 hover:underline">
             {developer?.full_name ?? 'Исполнитель'}
           </p>
           <p className="text-xs text-ink-muted">
-            {role?.name ?? ''} · {developer?.city} · {developer?.projects_done} проектов
+            {role?.name ?? ''} · {developer?.city} · {developer?.projects_done} проектов ·{' '}
+            <span className="text-brand">профиль и работы</span>
           </p>
-        </div>
+        </button>
         <div className="tnum shrink-0 text-right">
           <p className="text-base font-semibold text-ink">{formatCurrency(bid.amount, meta)}</p>
           <p className="text-xs text-ink-muted">
@@ -392,14 +401,21 @@ export default function ProjectHub({ onBack }) {
   const setViewer = useHubStore((state) => state.setViewer);
   const refresh = useHubStore((state) => state.refresh);
   const acceptBid = useHubStore((state) => state.acceptBid);
+  const closeDeal = useHubStore((state) => state.closeDeal);
+
+  const [profileDev, setProfileDev] = useState(null);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
+  const profileModal = (
+    <DeveloperProfile developer={profileDev} onClose={() => setProfileDev(null)} />
+  );
+
   if (!project) {
     return (
-      <main className="mx-auto w-full max-w-[1240px] px-5 pb-24 pt-16 sm:px-8 lg:px-10">
+      <main className="mx-auto w-full max-w-[1240px] px-5 pb-24 pt-10 sm:px-8 lg:px-10">
         <button
           type="button"
           onClick={onBack}
@@ -408,19 +424,41 @@ export default function ProjectHub({ onBack }) {
           <ArrowLeft size={ICON.sm} strokeWidth={STROKE.regular} aria-hidden="true" />
           К предложению
         </button>
-        <div className="mt-8 rounded-card border border-dashed border-line-strong bg-surface px-6 py-10 text-center">
-          {loading ? (
-            <p className="text-sm text-ink-muted">Загружаю доску…</p>
-          ) : (
-            <>
-              <p className="text-base font-semibold text-ink">Проект ещё не опубликован</p>
-              <p className="measure mx-auto mt-2 text-sm leading-relaxed text-ink-muted">
-                Примите предложение на предыдущем экране — проект появится здесь с бюджетом и
-                откликами исполнителей.
-              </p>
-            </>
-          )}
-        </div>
+
+        <motion.header
+          initial={reduce ? false : { opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-8"
+        >
+          <p className="label-caps">Центр проектов · {template.meta.studio.name}</p>
+          <h1 className="mt-3 text-[2rem] font-semibold leading-[1.08] tracking-[-0.03em] text-ink sm:text-[2.75rem]">
+            Опишите задачу — цену назовут исполнители
+          </h1>
+          <p className="measure mt-3 text-[1.0625rem] leading-relaxed text-ink-soft">
+            {developers.length} проверенных специалистов из Ташкента, Самарканда, Бухары и Ферганы.
+            Смета собирается под вашу задачу, деньги держит площадка до приёмки работы.
+          </p>
+        </motion.header>
+
+        {loading ? (
+          <p className="mt-8 text-sm text-ink-muted">Загружаю доску…</p>
+        ) : (
+          <motion.div
+            initial={reduce ? false : { opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+            className="mt-8"
+          >
+            <NewProjectForm />
+          </motion.div>
+        )}
+
+        {developers.length > 0 && (
+          <DeveloperBoard developers={developers} onOpen={setProfileDev} />
+        )}
+
+        {profileModal}
       </main>
     );
   }
@@ -463,6 +501,18 @@ export default function ProjectHub({ onBack }) {
               </button>
             ))}
           </div>
+
+          {isClient && (project.status === 'completed' || !deal) && (
+            <button
+              type="button"
+              onClick={closeDeal}
+              disabled={pendingAction === 'close'}
+              className="flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 text-[0.8125rem] font-medium text-ink-soft transition-colors duration-150 hover:border-line-strong hover:text-ink disabled:opacity-45"
+            >
+              <Plus size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
+              Новая задача
+            </button>
+          )}
 
           <button
             type="button"
@@ -533,6 +583,7 @@ export default function ProjectHub({ onBack }) {
                     bid={bid}
                     canAccept={isClient && openForBids}
                     onAccept={acceptBid}
+                    onOpenProfile={setProfileDev}
                     pending={pendingAction === `accept:${bid.id}`}
                   />
                 ))}
@@ -542,6 +593,7 @@ export default function ProjectHub({ onBack }) {
 
           <DeveloperBoard
             developers={developers}
+            onOpen={setProfileDev}
             footerFor={
               isClient
                 ? null
@@ -556,7 +608,7 @@ export default function ProjectHub({ onBack }) {
 
         <aside className="mt-12 lg:mt-0" aria-label="Сделка">
           <div className="lg:sticky lg:top-24">
-            <DealPanel deal={deal} viewer={viewer} />
+            <DealPanel deal={deal} viewer={viewer} onOpenProfile={setProfileDev} />
             <Timeline events={events} />
 
             <p className="mt-4 flex items-start gap-2 px-1 text-xs leading-relaxed text-ink-muted">
@@ -584,6 +636,8 @@ export default function ProjectHub({ onBack }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {profileModal}
     </main>
   );
 }

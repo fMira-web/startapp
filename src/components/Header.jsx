@@ -71,20 +71,22 @@ export default function Header() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-          {projectId && (
-            <button
-              type="button"
-              onClick={() => setView(view === 'hub' ? 'proposal' : 'hub')}
-              className={`hidden min-h-9 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[0.8125rem] font-medium transition-colors duration-150 sm:inline-flex ${
-                view === 'hub'
-                  ? 'bg-brand text-white'
-                  : 'border border-line bg-surface text-ink-soft hover:text-ink'
-              }`}
-            >
-              <LayoutGrid size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
-              {view === 'hub' ? 'К предложению' : 'Центр проектов'}
-            </button>
-          )}
+          {/* Вход в Центр проектов нужен и до первой сделки: там заказчик
+              описывает свою задачу, а не смотрит готовое предложение. */}
+          <button
+            type="button"
+            onClick={() => setView(view === 'hub' ? 'proposal' : 'hub')}
+            className={`min-h-9 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[0.8125rem] font-medium transition-colors duration-150 inline-flex ${
+              view === 'hub'
+                ? 'bg-brand text-white'
+                : 'border border-line bg-surface text-ink-soft hover:text-ink'
+            }`}
+          >
+            <LayoutGrid size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
+            <span className="hidden sm:inline">
+              {view === 'hub' ? 'К предложению' : projectId ? 'Центр проектов' : 'Своя задача'}
+            </span>
+          </button>
 
           <CurrencySwitch />
 

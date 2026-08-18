@@ -200,6 +200,7 @@ export const PROJECT_STATUS = {
   in_progress: { label: 'В работе', tone: 'brand' },
   submitted: { label: 'Сдан на проверку', tone: 'warn' },
   completed: { label: 'Завершён и оплачен', tone: 'signal' },
+  archived: { label: 'В архиве', tone: 'warn' },
 };
 
 export const DEAL_STATUS = {

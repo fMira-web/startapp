@@ -288,6 +288,39 @@ export async function releasePayment(projectId) {
   return payload.deal;
 }
 
+/**
+ * Мягкий откат: если сервер ещё не умеет этот маршрут, отвечаем локально,
+ * но НЕ переводим всё приложение в демо-режим — остальные вызовы должны
+ * продолжать ходить на живой сервер.
+ */
+async function callSoftFallback(realCall, demoCall) {
+  if (fallbackActive) return demoCall();
+  try {
+    return await realCall();
+  } catch (error) {
+    if (!fallbackWorthy(error)) throw error;
+    return demoCall();
+  }
+}
+
+/** Заказчик оценивает исполнителя после выплаты. */
+export async function rateDeveloper(projectId, input) {
+  const payload = await callSoftFallback(
+    () => request(`/api/hub/projects/${encodeURIComponent(projectId)}/rate`, { body: input }),
+    () => demo.rateDeveloper(projectId, input)
+  );
+  return payload.deal;
+}
+
+/** Выход из завершённой сделки: проект уходит в архив. */
+export async function closeProject(projectId) {
+  const payload = await callSoftFallback(
+    () => request(`/api/hub/projects/${encodeURIComponent(projectId)}/close`, { body: {} }),
+    () => demo.closeProject(projectId)
+  );
+  return payload.project;
+}
+
 /* ------------------------------------------------------------------ */
 /* Environment                                                         */
 /* ------------------------------------------------------------------ */

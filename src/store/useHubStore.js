@@ -57,9 +57,23 @@ export const useHubStore = create()(
         }
       },
 
+      /** Список исполнителей нужен и без проекта — на экране новой задачи. */
+      async loadDevelopers() {
+        if (get().developers.length) return;
+        try {
+          const developers = await api.fetchDevelopers();
+          set({ developers });
+        } catch {
+          // Витрина исполнителей не критична: молча оставляем пустой список.
+        }
+      },
+
       async refresh() {
         const projectId = get().projectId;
-        if (!projectId) return;
+        if (!projectId) {
+          await get().loadDevelopers();
+          return;
+        }
         set({ loading: true });
         try {
           const state = await api.fetchHubProject(projectId);
@@ -119,6 +133,65 @@ export const useHubStore = create()(
       releasePayment() {
         const projectId = get().projectId;
         return get().run('release', () => api.releasePayment(projectId));
+      },
+
+      /** Оценка исполнителя звёздами — доступна после выплаты. */
+      rateDeveloper(input) {
+        const projectId = get().projectId;
+        return get().run('rate', () => api.rateDeveloper(projectId, input));
+      },
+
+      /**
+       * Выход из завершённой сделки. Проект уходит в архив, доска очищается —
+       * заказчик возвращается к экрану новой задачи, а не застревает на
+       * закрытой сделке.
+       */
+      async closeDeal() {
+        const projectId = get().projectId;
+        if (!projectId) return true;
+        set({ pendingAction: 'close', error: null });
+        try {
+          await api.closeProject(projectId);
+        } catch {
+          // Даже если сервер не смог заархивировать проект, держать человека
+          // на закрытой сделке нельзя — доску очищаем в любом случае.
+        }
+        set({
+          projectId: null,
+          project: null,
+          bids: [],
+          deal: null,
+          events: [],
+          pendingAction: null,
+          error: null,
+        });
+        return true;
+      },
+
+      /**
+       * Своя задача: заказчик описывает работу сам, бюджет приходит из формы.
+       * Это отдельный путь от «принять предложение» — здесь нет шаблона.
+       */
+      async createCustomProject(input) {
+        set({ loading: true, error: null });
+        try {
+          const project = await api.createHubProject({
+            proposalId: `TASK-${Date.now().toString(36).toUpperCase()}`,
+            title: input.title,
+            summary: input.summary,
+            budget: input.budget,
+            currency: 'UZS',
+            weeks: input.weeks ?? null,
+            roleIds: input.roleIds ?? [],
+            lines: (input.roleIds ?? []).map((id) => ({ id, name: id, amount: 0 })),
+          });
+          set({ projectId: project.id, project, view: 'hub', loading: false });
+          await get().refresh();
+          return project;
+        } catch (error) {
+          set({ loading: false, error: error.message ?? 'Не удалось опубликовать задачу.' });
+          return null;
+        }
       },
 
       reset: () =>

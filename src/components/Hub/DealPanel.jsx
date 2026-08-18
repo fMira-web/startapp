@@ -4,6 +4,7 @@ import {
   AlertCircle,
   BadgeCheck,
   CheckCircle2,
+  DoorOpen,
   Hammer,
   Loader2,
   Send,
@@ -15,6 +16,7 @@ import { useHubStore } from '../../store/useHubStore';
 import { formatCurrency, formatDateTime } from '../../lib/format';
 import { DEAL_STATUS, PLATFORM_FEE_RATE } from '../../data/hubData';
 import { ICON, STROKE } from '../../lib/icons';
+import RatingStars from './RatingStars';
 
 const STEPS = [
   { id: 'escrow', label: 'Деньги зарезервированы', icon: ShieldCheck },
@@ -89,7 +91,67 @@ function DeliveryForm({ onSubmit, pending }) {
   );
 }
 
-export default function DealPanel({ deal, viewer }) {
+/** Оценка исполнителя: звёзды живые, комментарий по желанию. */
+function RatingBlock({ deal }) {
+  const rateDeveloper = useHubStore((state) => state.rateDeveloper);
+  const pendingAction = useHubStore((state) => state.pendingAction);
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+
+  if (deal.client_rating) {
+    return (
+      <div className="mt-5 rounded-control border border-line bg-surface-sunken px-4 py-3">
+        <p className="label-caps">Ваша оценка</p>
+        <div className="mt-1.5 flex items-center gap-2">
+          <RatingStars value={deal.client_rating} size={16} />
+          <span className="tnum text-sm font-medium text-ink">{deal.client_rating},0</span>
+        </div>
+        {deal.client_comment && (
+          <p className="mt-2 text-[0.8125rem] leading-relaxed text-ink-soft">
+            «{deal.client_comment}»
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="mt-5 rounded-control border border-line bg-surface-sunken px-4 py-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!rating) return;
+        rateDeveloper({ rating, comment });
+      }}
+    >
+      <RatingStars
+        label="Оцените исполнителя"
+        value={rating}
+        onChange={setRating}
+        size={16}
+      />
+      <textarea
+        rows={2}
+        value={comment}
+        onChange={(event) => setComment(event.target.value)}
+        placeholder="Пара слов для других заказчиков — по желанию."
+        className="mt-3 w-full rounded-control border border-line bg-surface px-3.5 py-2.5 text-sm leading-relaxed text-ink placeholder:text-ink-muted/70"
+      />
+      <button
+        type="submit"
+        disabled={!rating || pendingAction === 'rate'}
+        className="mt-3 flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface px-5 text-sm font-semibold text-ink transition-colors duration-200 hover:border-line-strong disabled:opacity-45"
+      >
+        {pendingAction === 'rate' && (
+          <Loader2 size={ICON.sm} strokeWidth={STROKE.regular} className="animate-spin" />
+        )}
+        Отправить оценку
+      </button>
+    </form>
+  );
+}
+
+export default function DealPanel({ deal, viewer, onOpenProfile = null }) {
   const meta = useMeta();
   const reduce = useReducedMotion();
   const pendingAction = useHubStore((state) => state.pendingAction);
@@ -97,6 +159,7 @@ export default function DealPanel({ deal, viewer }) {
   const startWork = useHubStore((state) => state.startWork);
   const submitWork = useHubStore((state) => state.submitWork);
   const releasePayment = useHubStore((state) => state.releasePayment);
+  const closeDeal = useHubStore((state) => state.closeDeal);
 
   if (!deal) {
     return (
@@ -130,7 +193,12 @@ export default function DealPanel({ deal, viewer }) {
       </div>
 
       <div className="px-5 py-5">
-        <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => deal.developer && onOpenProfile?.(deal.developer)}
+          disabled={!deal.developer || !onOpenProfile}
+          className="flex w-full items-center gap-3 rounded-control text-left transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-surface-sunken"
+        >
           <span
             aria-hidden="true"
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-tint text-sm font-semibold text-brand"
@@ -145,9 +213,12 @@ export default function DealPanel({ deal, viewer }) {
             <p className="truncate text-[0.9375rem] font-semibold text-ink">
               {deal.developer?.full_name ?? 'Исполнитель'}
             </p>
-            <p className="truncate text-xs text-ink-muted">{deal.developer?.headline}</p>
+            <p className="truncate text-xs text-ink-muted">
+              {deal.developer?.headline}
+              {onOpenProfile && deal.developer ? ' · профиль' : ''}
+            </p>
           </div>
-        </div>
+        </button>
 
         <ol className="mt-5 flex flex-col gap-0">
           {STEPS.map((step, index) => {
@@ -306,15 +377,40 @@ export default function DealPanel({ deal, viewer }) {
         )}
 
         {deal.status === 'released' && (
-          <p className="mt-5 flex items-start gap-2 rounded-control bg-signal-tint px-4 py-3 text-[0.8125rem] leading-relaxed text-signal">
-            <CheckCircle2
-              size={ICON.sm}
-              strokeWidth={STROKE.regular}
-              aria-hidden="true"
-              className="mt-[0.15rem] shrink-0"
-            />
-            Сделка закрыта {deal.released_at ? formatDateTime(deal.released_at, meta.locale) : ''}.
-          </p>
+          <>
+            <motion.p
+              initial={reduce ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-5 flex items-start gap-2 rounded-control bg-signal-tint px-4 py-3 text-[0.8125rem] leading-relaxed text-signal"
+            >
+              <CheckCircle2
+                size={ICON.sm}
+                strokeWidth={STROKE.regular}
+                aria-hidden="true"
+                className="mt-[0.15rem] shrink-0"
+              />
+              Сделка закрыта {deal.released_at ? formatDateTime(deal.released_at, meta.locale) : ''}.
+            </motion.p>
+
+            {isClient && <RatingBlock deal={deal} />}
+
+            <button
+              type="button"
+              onClick={closeDeal}
+              disabled={pendingAction === 'close'}
+              className="mt-3 flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-control border border-line-strong bg-surface px-5 text-sm font-semibold text-ink transition-colors duration-200 hover:bg-surface-sunken disabled:opacity-45"
+            >
+              {pendingAction === 'close' ? (
+                <Loader2 size={ICON.sm} strokeWidth={STROKE.regular} className="animate-spin" />
+              ) : (
+                <DoorOpen size={ICON.sm} strokeWidth={STROKE.regular} aria-hidden="true" />
+              )}
+              Выйти из сделки
+            </button>
+            <p className="mt-2 text-center text-xs leading-relaxed text-ink-muted">
+              Проект уйдёт в архив, и можно опубликовать новую задачу.
+            </p>
+          </>
         )}
       </div>
     </div>

@@ -1,9 +1,39 @@
 import * as demo from './demoApi';
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000').replace(
-  /\/$/,
-  ''
-);
+/**
+ * Куда стучаться за API.
+ *
+ * На реальном домене мы всегда ходим на свой же origin: правило в
+ * `vercel.json` проксирует `/api/*` на бэкенд. Так решаются сразу три
+ * проблемы разом:
+ *   1. cookie сессии становится first-party — Safari и Chrome больше не
+ *      режут её как стороннюю;
+ *   2. исчезает preflight и весь риск ошибиться в CORS-списке;
+ *   3. браузер не обращается к домену хостинга напрямую, а у части
+ *      провайдеров (в том числе узбекских) он закрыт — именно так
+ *      появляется ERR_CONNECTION_CLOSED при живом сервере.
+ *
+ * Локальная разработка ходит по VITE_API_BASE_URL, как и раньше.
+ * VITE_API_DIRECT=1 принудительно возвращает прямые запросы — на случай
+ * хостинга без прокси.
+ */
+function resolveApiBaseUrl() {
+  const configured = String(import.meta.env.VITE_API_BASE_URL ?? '')
+    .trim()
+    .replace(/\/$/, '');
+
+  if (import.meta.env.VITE_API_DIRECT === '1') return configured;
+  if (typeof window === 'undefined') return configured;
+
+  const host = window.location.hostname;
+  const local =
+    host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local');
+
+  if (local) return configured || 'http://localhost:4000';
+  return '';
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 /**
  * With VITE_DEMO_MODE=1 every call is answered in the browser by `demoApi`,

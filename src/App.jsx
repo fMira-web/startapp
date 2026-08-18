@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
+import { ExternalLink } from 'lucide-react';
 import Header from './components/Header';
 import BriefSection from './components/BriefSection';
 import ModuleSection from './components/InteractiveModules/ModuleSection';
@@ -7,30 +8,93 @@ import StickySummary from './components/Checkout/StickySummary';
 import MobileSummaryBar from './components/Checkout/MobileSummaryBar';
 import SignedConfirmation from './components/SignedConfirmation';
 import AuthScreen from './components/Auth/AuthScreen';
+import ProjectHub from './components/Hub/ProjectHub';
 import Reveal from './components/Reveal';
-import { useTemplate, useQuote } from './store/useQuoteStore';
+import { useTemplate, useQuote, useMeta } from './store/useQuoteStore';
 import { useAuthStore } from './store/useAuthStore';
-import { formatCurrency, formatDate } from './lib/format';
+import { useHubStore } from './store/useHubStore';
+import { formatCurrency, formatAlternate, formatDate, FX } from './lib/format';
+
+function MarketSection() {
+  const template = useTemplate();
+  const market = template.market;
+  if (!market) return null;
+
+  return (
+    <section aria-labelledby="market-heading" className="mt-20 sm:mt-28">
+      <Reveal>
+        <div className="border-t border-line pt-8">
+          <p className="label-caps">Рынок Узбекистана · август 2026</p>
+          <h2
+            id="market-heading"
+            className="mt-3 text-[1.75rem] font-semibold tracking-[-0.025em] text-ink sm:text-[2rem]"
+          >
+            {market.title}
+          </h2>
+          <p className="measure mt-3 text-[1.0625rem] leading-relaxed text-ink-muted">
+            {market.description}
+          </p>
+        </div>
+      </Reveal>
+
+      <Reveal y={12}>
+        <dl className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {market.benchmarks.map((item) => (
+            <div key={item.label} className="rounded-card border border-line bg-surface px-5 py-4">
+              <dt className="text-xs text-ink-muted">{item.label}</dt>
+              <dd className="tnum mt-1.5 text-lg font-semibold tracking-[-0.02em] text-ink">
+                {item.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </Reveal>
+
+      <Reveal y={10}>
+        <div className="mt-6 rounded-card border border-line bg-surface-sunken px-5 py-4">
+          <p className="tnum text-sm font-medium text-ink-soft">
+            {market.fx.label}: {market.fx.value}
+          </p>
+          <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+            {market.sources.map((source) => (
+              <li key={source.url}>
+                <a
+                  href={source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-ink-muted underline underline-offset-2 transition-colors hover:text-brand"
+                >
+                  {source.label}
+                  <ExternalLink size={12} strokeWidth={1.6} aria-hidden="true" />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
 
 function CommercialTerms() {
   const template = useTemplate();
   const quote = useQuote();
-  const meta = template.meta;
+  const meta = useMeta();
 
   return (
     <section aria-labelledby="terms-heading" className="mt-20 sm:mt-28">
       <Reveal>
         <div className="border-t border-line pt-8">
-          <p className="label-caps">Commercial terms</p>
+          <p className="label-caps">Коммерческие условия</p>
           <h2
             id="terms-heading"
             className="mt-3 text-[1.75rem] font-semibold tracking-[-0.025em] text-ink sm:text-[2rem]"
           >
-            Payment schedule
+            График платежей
           </h2>
           <p className="measure mt-3 text-[1.0625rem] leading-relaxed text-ink-muted">
-            Invoiced against the configuration on this page. Every figure updates with your
-            selections.
+            Счета выставляются по конфигурации на этой странице. Каждая цифра пересчитывается вместе
+            с вашим выбором.
           </p>
         </div>
       </Reveal>
@@ -45,6 +109,9 @@ function CommercialTerms() {
               <p className="tnum mt-3 text-xl font-semibold tracking-[-0.02em] text-ink">
                 {formatCurrency(entry.amount, meta)}
               </p>
+              <p className="tnum mt-0.5 text-xs text-ink-muted">
+                {formatAlternate(entry.amount, meta)}
+              </p>
               <p className="mt-1 text-sm text-ink-muted">{entry.label}</p>
             </div>
           ))}
@@ -53,8 +120,8 @@ function CommercialTerms() {
 
       <Reveal y={10}>
         <p className="mt-6 text-sm leading-relaxed text-ink-muted">
-          {template.payment.terms} This proposal is valid until{' '}
-          {formatDate(meta.validUntil, meta.locale)}.
+          {template.payment.terms} Предложение действительно до{' '}
+          {formatDate(template.meta.validUntil, template.meta.locale)}.
         </p>
       </Reveal>
     </section>
@@ -70,9 +137,13 @@ function Footer() {
           {meta.studio.name} · {meta.studio.site}
         </p>
         <p className="text-sm text-ink-muted">
-          {meta.leadContact.name}, {meta.leadContact.role} · {meta.leadContact.email}
+          {meta.leadContact.name}, {meta.leadContact.role} · {meta.leadContact.email} ·{' '}
+          {meta.leadContact.phone}
         </p>
       </div>
+      <p className="tnum mt-3 text-xs text-ink-muted">
+        Курс {FX.source} на {formatDate(FX.date)}: {FX.uzsPerUsd.toLocaleString('ru-RU')} сум за $1
+      </p>
     </footer>
   );
 }
@@ -88,7 +159,7 @@ function BootSplash() {
         transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
       />
       <span className="sr-only" role="status">
-        Loading your proposal
+        Загружаю ваше предложение
       </span>
     </div>
   );
@@ -98,15 +169,13 @@ function Proposal() {
   const template = useTemplate();
 
   return (
-    <div className="min-h-screen bg-canvas">
+    <>
       <a
         href="#proposal-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-control focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white"
       >
-        Skip to proposal
+        К содержанию предложения
       </a>
-
-      <Header />
 
       <main id="proposal-content" className="mx-auto w-full max-w-[1240px] px-5 sm:px-8 lg:px-10">
         <div className="grid grid-cols-1 gap-x-14 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -117,25 +186,28 @@ function Proposal() {
               <ModuleSection key={section.id} section={section} />
             ))}
 
+            <MarketSection />
             <CommercialTerms />
             <SignedConfirmation />
             <Footer />
           </div>
 
-          <aside className="hidden lg:block lg:pt-24" aria-label="Quote summary">
+          <aside className="hidden lg:block lg:pt-24" aria-label="Итог по конфигурации">
             <StickySummary />
           </aside>
         </div>
       </main>
 
       <MobileSummaryBar />
-    </div>
+    </>
   );
 }
 
 export default function App() {
   const status = useAuthStore((state) => state.status);
   const bootstrap = useAuthStore((state) => state.bootstrap);
+  const view = useHubStore((state) => state.view);
+  const setView = useHubStore((state) => state.setView);
 
   useEffect(() => {
     bootstrap();
@@ -143,5 +215,11 @@ export default function App() {
 
   if (status === 'loading') return <BootSplash />;
   if (status === 'anonymous') return <AuthScreen />;
-  return <Proposal />;
+
+  return (
+    <div className="min-h-screen bg-canvas">
+      <Header />
+      {view === 'hub' ? <ProjectHub onBack={() => setView('proposal')} /> : <Proposal />}
+    </div>
+  );
 }

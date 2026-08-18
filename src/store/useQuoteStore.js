@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useMemo } from 'react';
 import { proposalTemplate } from '../data/proposalTemplate';
+import { pluralize } from '../lib/format';
 
 /* ------------------------------------------------------------------ */
 /* Initial selection state, derived from the template                  */
@@ -50,6 +51,8 @@ export const useQuoteStore = create()(
     (set, get) => ({
       template: proposalTemplate,
       selections: buildInitialSelections(proposalTemplate),
+      // В какой валюте клиент сейчас хочет видеть цифры. Хранение всегда в сумах.
+      currencyView: 'UZS',
       // Set once the signed-in client has accepted this configuration.
       acceptance: null, // { acceptedAt: string }
       accepting: false,
@@ -118,6 +121,10 @@ export const useQuoteStore = create()(
           selections: buildInitialSelections(state.template),
         })),
 
+      setCurrencyView: (currencyView) => set({ currencyView }),
+      toggleCurrencyView: () =>
+        set((state) => ({ currencyView: state.currencyView === 'UZS' ? 'USD' : 'UZS' })),
+
       /* --- acceptance actions --------------------------------------- */
 
       setAccepting: (accepting) => set({ accepting, acceptError: accepting ? null : undefined }),
@@ -132,7 +139,10 @@ export const useQuoteStore = create()(
     {
       name: `proposal-${proposalTemplate.meta.proposalId}`,
       version: 1,
-      partialize: (state) => ({ selections: state.selections }),
+      partialize: (state) => ({
+        selections: state.selections,
+        currencyView: state.currencyView,
+      }),
       merge: (persisted, current) => {
         // Never trust a persisted shape blindly: an updated template must win.
         if (!persisted || typeof persisted !== 'object') return current;
@@ -140,6 +150,7 @@ export const useQuoteStore = create()(
         const saved = persisted.selections ?? {};
         return {
           ...current,
+          currencyView: persisted.currencyView === 'USD' ? 'USD' : 'UZS',
           selections: {
             toggles: { ...base.toggles, ...pickKnown(base.toggles, saved.toggles) },
             quantities: { ...base.quantities, ...pickKnown(base.quantities, saved.quantities) },
@@ -209,13 +220,13 @@ export function computeQuote(template, selections) {
         const qty = selections.quantities[item.id] ?? 0;
         if (qty <= 0) continue;
         optionalCount += 1;
-        const unit = qty === 1 ? item.unitLabel : (item.unitLabelPlural ?? `${item.unitLabel}s`);
+        const unit = item.plural ? pluralize(qty, item.plural) : item.unitLabel;
         lines.push({
           id: item.id,
           group: section.id,
           groupLabel: section.title,
           name: item.name,
-          detail: `${qty} ${unit} × ${item.unitPrice.toLocaleString(template.meta.locale)}`,
+          detail: `${qty} ${unit} × ${item.unitPrice.toLocaleString('ru-RU')}`,
           amount: qty * item.unitPrice,
           quantity: qty,
           removable: true,
@@ -311,6 +322,19 @@ export function useQuote() {
 
 export function useTemplate() {
   return useQuoteStore((state) => state.template);
+}
+
+/**
+ * Всё, что нужно форматтеру денег: валюта хранения, валюта показа,
+ * локаль и описание налога. Один объект вместо пяти пропсов.
+ */
+export function useMeta() {
+  const template = useQuoteStore((state) => state.template);
+  const currencyView = useQuoteStore((state) => state.currencyView);
+  return useMemo(
+    () => ({ ...template.meta, tax: template.tax, view: currencyView }),
+    [template, currencyView]
+  );
 }
 
 export default useQuoteStore;

@@ -27,8 +27,8 @@ const DIAL_CODES =
   'TW:886,TZ:255,UA:380,UG:256,US:1,UY:598,UZ:998,VA:39,VC:1784,VE:58,VG:1284,VI:1340,VN:84,' +
   'VU:678,WF:681,WS:685,XK:383,YE:967,YT:262,ZA:27,ZM:260,ZW:263';
 
-/** Shown first — the studio's most common client geographies. */
-const PRIORITY = ['US', 'GB', 'CA', 'AU', 'DE', 'FR', 'NL', 'AE', 'SG', 'UZ', 'KZ', 'RU'];
+/** Сначала — страны, откуда приходят клиенты студии. Узбекистан по умолчанию. */
+const PRIORITY = ['UZ', 'KZ', 'KG', 'TJ', 'TM', 'RU', 'AE', 'TR', 'US', 'GB', 'DE', 'CN'];
 
 const FALLBACK_NAMES = {
   XK: 'Kosovo',
@@ -38,7 +38,7 @@ const FALLBACK_NAMES = {
 function resolveNames() {
   let display = null;
   try {
-    display = new Intl.DisplayNames(undefined, { type: 'region' });
+    display = new Intl.DisplayNames('ru-RU', { type: 'region' });
   } catch {
     display = null;
   }
@@ -85,7 +85,7 @@ export function searchCountries(query) {
   );
 }
 
-/** Best-effort default from the browser locale, falling back to US. */
+/** Определяем по локали браузера, по умолчанию — Узбекистан. */
 export function detectDefaultCountry() {
   try {
     const locale = new Intl.Locale(navigator.language);
@@ -94,7 +94,7 @@ export function detectDefaultCountry() {
   } catch {
     /* ignore */
   }
-  return byIso.get('US');
+  return byIso.get('UZ');
 }
 
 /** Strict E.164: leading +, first digit 1-9, 8-15 digits total. */

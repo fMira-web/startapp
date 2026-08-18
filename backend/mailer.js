@@ -17,7 +17,7 @@ import { Resend } from 'resend';
 const IS_PRODUCTION = (process.env.NODE_ENV ?? 'development') === 'production';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? '';
-export const MAIL_FROM = process.env.MAIL_FROM ?? 'Proposals <proposals@example.com>';
+export const MAIL_FROM = process.env.MAIL_FROM ?? 'Toshkent Web Studio <no-reply@twstudio.uz>';
 const MAIL_REPLY_TO = process.env.MAIL_REPLY_TO ?? null;
 
 const SMTP_HOST = process.env.SMTP_HOST ?? '';
@@ -55,15 +55,15 @@ function escapeHtml(value) {
 }
 
 function codeEmailHtml({ code, name, intro }) {
-  const greeting = name ? `Hello ${escapeHtml(name)},` : 'Hello,';
+  const greeting = name ? `Здравствуйте, ${escapeHtml(name)}!` : 'Здравствуйте!';
   return `<!doctype html>
-<html lang="en">
+<html lang="ru">
   <body style="margin:0;padding:32px 16px;background:#f9fafb;font-family:Inter,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;">
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:480px;margin:0 auto;background:#ffffff;border:1px solid #e8eaee;border-radius:14px;">
       <tr>
         <td style="padding:32px 32px 8px 32px;">
-          <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#55637a;">Email verification</p>
-          <h1 style="margin:12px 0 0 0;font-size:22px;line-height:1.25;font-weight:600;letter-spacing:-0.02em;color:#0f172a;">Your verification code</h1>
+          <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#55637a;">Подтверждение почты</p>
+          <h1 style="margin:12px 0 0 0;font-size:22px;line-height:1.25;font-weight:600;letter-spacing:-0.02em;color:#0f172a;">Ваш код подтверждения</h1>
         </td>
       </tr>
       <tr>
@@ -77,13 +77,13 @@ function codeEmailHtml({ code, name, intro }) {
           <div style="background:#f3f4f6;border:1px solid #e8eaee;border-radius:10px;padding:20px;text-align:center;">
             <span style="font-size:34px;font-weight:600;letter-spacing:0.34em;font-variant-numeric:tabular-nums;color:#1e3a5f;">${code}</span>
           </div>
-          <p style="margin:12px 0 0 0;font-size:13px;line-height:1.6;color:#55637a;text-align:center;">This code expires in 10 minutes and can be used once.</p>
+          <p style="margin:12px 0 0 0;font-size:13px;line-height:1.6;color:#55637a;text-align:center;">Код действует 10 минут и используется один раз.</p>
         </td>
       </tr>
       <tr>
         <td style="padding:24px 32px 32px 32px;">
           <p style="margin:0;font-size:13px;line-height:1.6;color:#55637a;">
-            If you did not request this, ignore this message — no account is activated and no signature is recorded.
+            Если вы это не запрашивали, просто проигнорируйте письмо: аккаунт не активируется и подпись не записывается.
           </p>
         </td>
       </tr>
@@ -97,11 +97,11 @@ function codeEmailHtml({ code, name, intro }) {
  * @returns {Promise<{ devCode?: string }>}
  */
 export async function sendCodeEmail({ to, code, name, intro }) {
-  const subject = `${code} is your verification code`;
+  const subject = `${code} — ваш код подтверждения`;
   const body =
-    intro ?? 'Use the code below to confirm your email address and finish signing in.';
+    intro ?? 'Введите код ниже, чтобы подтвердить почту и завершить вход.';
   const html = codeEmailHtml({ code, name, intro: body });
-  const text = `${body}\n\nYour code is ${code}. It expires in 10 minutes.`;
+  const text = `${body}\n\nВаш код: ${code}. Он действует 10 минут.`;
 
   if (EMAIL_MODE === 'resend') {
     const { error } = await resend.emails.send({

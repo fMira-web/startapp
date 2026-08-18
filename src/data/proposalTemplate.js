@@ -1,155 +1,193 @@
 /**
- * Single source of truth for one proposal.
+ * Единственный источник правды для одного коммерческого предложения.
  *
- * The shape below is the contract the store and every UI module read from.
- * Swap this object for an API response and nothing else has to change.
+ * Все суммы — в сумах (UZS), по уровню цен фриланс-сегмента Узбекистана
+ * (Ташкент, 2026). Ориентиры рынка вынесены в поле `market` и показываются
+ * прямо на странице, чтобы клиент видел, откуда взялись цифры.
  *
- * Section kinds
- *   'toggles'    -> independent optional line items (FeatureToggleCard)
- *   'quantities' -> unit-priced items with a stepper/slider (QuantitySelector)
- *   'tier'       -> mutually exclusive options, exactly one selected (TierSelector)
+ * Типы секций
+ *   'toggles'    -> независимые опции (FeatureToggleCard)
+ *   'quantities' -> позиции с ценой за единицу (QuantitySelector)
+ *   'tier'       -> взаимоисключающие варианты, ровно один выбран (TierSelector)
  */
 
 export const proposalTemplate = {
   meta: {
-    proposalId: 'PRP-2026-0148',
+    proposalId: 'KP-2026-0148',
     version: '1.2',
-    issuedOn: '2026-08-17',
-    validUntil: '2026-09-16',
-    currency: 'USD',
-    locale: 'en-US',
+    issuedOn: '2026-08-18',
+    validUntil: '2026-09-17',
+    currency: 'UZS',
+    locale: 'ru-RU',
+    country: 'UZ',
     studio: {
-      name: 'Northbound Studio',
-      site: 'northbound.studio',
+      name: 'Toshkent Web Studio',
+      site: 'twstudio.uz',
     },
     leadContact: {
-      name: 'Amelia Hart',
-      role: 'Principal & Project Lead',
-      email: 'amelia@northbound.studio',
+      name: 'Азиз Каримов',
+      role: 'Руководитель проектов',
+      email: 'aziz@twstudio.uz',
+      phone: '+998 90 123-45-67',
     },
   },
 
   client: {
-    name: 'Daniel Reyes',
-    company: 'Vantage Freight',
-    projectTitle: 'Vantage Freight — Customer Portal & Booking Platform',
+    name: 'Нодира Юсупова',
+    company: 'Anor Market',
+    projectTitle: 'Anor Market — интернет-магазин и личный кабинет клиента',
     summary:
-      'A single portal where your customers quote a shipment, book it, and track it to delivery — replacing the current mix of spreadsheets, phone calls, and three disconnected tools.',
+      'Один сайт, где покупатель выбирает товар, оплачивает через Payme или Click и видит статус доставки — вместо переписки в Telegram, звонков и таблицы в Excel.',
     brief: [
-      'Vantage Freight moves roughly 4,000 shipments a quarter, and today every one of them passes through a manual quote. Your operations team re-keys the same details into a spreadsheet, a legacy TMS, and an email thread. The cost is not only time: it is the two-day median gap between a customer asking for a price and receiving one, which is where the majority of lost deals originate.',
-      'This engagement builds the customer-facing layer that closes that gap. Customers get instant, rules-based quoting against your own rate tables, one-click booking, and live shipment status. Your team gets a single queue instead of three inboxes, plus the reporting layer that finally makes margin per lane visible.',
-      'The scope below is modular by design. The foundation phase is fixed; every subsequent capability is priced independently so you can commit to the core now and stage the rest across the fiscal year without renegotiating the whole agreement.',
+      'Anor Market обрабатывает около 900 заказов в месяц, и каждый из них сегодня проходит вручную: менеджер принимает заказ в Telegram, переносит его в Excel, звонит на склад и отдельно уведомляет курьера. Цена этого — не только время. Между заявкой и подтверждением проходит в среднем 40 минут, и именно на этом промежутке теряется большая часть заказов вечером и в выходные.',
+      'Этот проект закрывает разрыв. Покупатель получает каталог с актуальными остатками, онлайн-оплату через Payme, Click и Uzum, а также SMS о статусе заказа. Ваша команда получает одну панель вместо трёх окон и отчёт по марже в разрезе категорий и курьеров.',
+      'Объём работ разбит на модули. Базовый пакет фиксирован, каждая следующая возможность стоит отдельно — можно запустить ядро сейчас, а интеграции добавлять по мере роста, не пересогласовывая весь договор.',
     ],
     objectives: [
-      'Cut median quote turnaround from two days to under two minutes',
-      'Consolidate three operational tools into one auditable system of record',
-      'Expose margin per lane, per customer, and per service level in real time',
-      'Ship a foundation the in-house team can extend without the studio',
+      'Сократить подтверждение заказа с 40 минут до 2 минут',
+      'Свести Telegram, Excel и склад в одну систему учёта',
+      'Принимать онлайн-оплату Payme, Click и Uzum без ручной сверки',
+      'Оставить команде продукт, который она сможет вести без студии',
+    ],
+  },
+
+  /**
+   * Ориентиры узбекского рынка (август 2026) — показываются на странице,
+   * чтобы цены не выглядели взятыми с потолка.
+   */
+  market: {
+    title: 'Откуда эти цены',
+    description:
+      'Стоимость собрана по открытым прайсам студий и фрилансеров Ташкента и по данным о зарплатах в IT Узбекистана за 2026 год.',
+    fx: { label: 'Курс ЦБ РУз, 18.08.2026', value: '11 857,35 сум за $1' },
+    benchmarks: [
+      { label: 'Лендинг (фриланс)', value: '2–6 млн сум' },
+      { label: 'Корпоративный сайт', value: '4–12 млн сум' },
+      { label: 'Интернет-магазин', value: 'от 8 млн сум' },
+      { label: 'Веб-приложение', value: 'от 35 млн сум' },
+      { label: 'Средняя зарплата в IT', value: '17,41 млн сум/мес' },
+      { label: 'Ставка разработчика', value: '55–200 тыс сум/час' },
+    ],
+    sources: [
+      { label: '4Digital — цены на сайты в Ташкенте, 2026', url: 'https://4digital.uz/blog/skolko-stoit-sayt-v-tashkente' },
+      { label: 'Katov.uz — анализ цен на разработку', url: 'https://www.katov.uz/ru/blog/skolko-stoit-sozdanie-sayta-uzbekistan' },
+      { label: 'Pro-Code.uz — тарифы 2026', url: 'https://pro-code.uz/skolko-stoit-razrabotka-sajta-v-tashkente-v-2026-godu-aktualnye-czeny-i-tarify/' },
+      { label: 'Зарплаты в Узбекистане, 2026', url: 'https://t-j.ru/zarplata-v-uzbekistane/' },
+      { label: 'Курс доллара, Gazeta.uz 18.08.2026', url: 'https://www.gazeta.uz/ru/2026/08/17/usd-sum/' },
+      { label: 'Налоговые льготы IT Park', url: 'https://www.it-park.uz/ru/itpark/news/nalogovye-lgoty-dlya-startapov-i-inostrannyh-investorov-v-it-sektore-uzbekistana' },
     ],
   },
 
   basePackage: {
     id: 'base-foundation',
-    name: 'Foundation Engagement',
+    name: 'Базовый пакет: магазин и личный кабинет',
     description:
-      'The non-negotiable core: discovery, architecture, the design system, and the production build of quoting, booking, and tracking. Everything else on this page extends this foundation.',
-    price: 48000,
-    timeline: '10 weeks',
+      'Неделимое ядро: аналитика требований, дизайн, каталог, корзина, оформление заказа и админ-панель. Всё остальное на этой странице — надстройки над ним.',
+    price: 9_800_000,
+    timeline: '4 недели',
     includes: [
-      'Two-week discovery: stakeholder interviews, lane and rate-table audit, technical constraints',
-      'Information architecture and end-to-end flows for quote, book, and track',
-      'A component-level design system in Figma, handed over with tokens',
-      'Production front-end build, responsive from 375px upward',
-      'Rules-based quoting engine wired to your existing rate tables',
-      'Booking workflow with document generation and email confirmation',
-      'Shipment tracking with carrier status ingestion',
-      'Role-based access for admin, operations, and customer users',
-      'WCAG 2.2 AA accessibility conformance across all shipped screens',
-      'Deployment pipeline, monitoring, and a two-week hypercare window',
+      'Разбор процессов: интервью с менеджерами, аудит текущих заказов и остатков',
+      'Структура каталога и сценарии «выбрал → оплатил → получил»',
+      'Дизайн в Figma: 14 экранов, адаптив от 360px',
+      'Вёрстка и фронтенд на React, скорость загрузки до 2 секунд на 4G',
+      'Каталог с фильтрами, поиском и остатками по складу',
+      'Корзина, оформление заказа, промокоды',
+      'Админ-панель: заказы, товары, клиенты, статусы',
+      'Роли доступа: администратор, менеджер, курьер',
+      'Хостинг, домен .uz, SSL и настройка сервера',
+      'Две недели сопровождения после запуска',
     ],
   },
 
   sections: [
     {
       id: 'phase-integrations',
-      label: 'Phase 02',
-      title: 'Integrations & Automation',
+      label: 'Этап 02',
+      title: 'Интеграции и автоматизация',
       description:
-        'Each integration removes a category of manual work. Priced and delivered independently, so you can sequence them against your own systems roadmap.',
+        'Каждая интеграция убирает отдельный кусок ручной работы. Считается и сдаётся независимо — можно подключать по очереди.',
       kind: 'toggles',
       items: [
         {
-          id: 'int-erp',
-          name: 'ERP & accounting sync',
+          id: 'int-payments',
+          name: 'Онлайн-оплата: Payme, Click, Uzum',
           description:
-            'Two-way sync with your accounting system so a booked shipment becomes an invoice without anyone re-keying it. Includes reconciliation reporting and a failure queue with retry.',
-          price: 9500,
-          note: 'Removes an estimated 12 hours of finance admin per week',
+            'Подключение трёх основных платёжных систем Узбекистана с проверкой подписи, возвратами и журналом транзакций. Сверка платежей перестаёт быть ручной.',
+          price: 1_500_000,
+          note: 'Покрывает подавляющую часть онлайн-платежей в стране',
           recommended: true,
           defaultOn: true,
         },
         {
-          id: 'int-carrier',
-          name: 'Carrier API network',
+          id: 'int-sms',
+          name: 'SMS-уведомления (Eskiz / Play Mobile)',
           description:
-            'Direct connections to your six highest-volume carriers for live rates, tender, and status events. Additional carriers can be added later at a fixed per-carrier rate.',
-          price: 14000,
-          note: 'Live rates replace the nightly spreadsheet import',
+            'Покупатель получает SMS при подтверждении, отправке и доставке заказа. Шаблоны на русском и узбекском, отправка через локального оператора.',
+          price: 900_000,
+          note: 'Снимает большую часть звонков «а где мой заказ»',
           recommended: true,
           defaultOn: true,
         },
         {
-          id: 'int-edi',
-          name: 'EDI transaction layer',
+          id: 'int-telegram',
+          name: 'Telegram-бот приёма заказов',
           description:
-            'EDI 204, 210, 214, and 990 support for enterprise shippers who cannot consume a REST API. Includes a trading-partner onboarding runbook.',
-          price: 18500,
-          note: 'Required by three of your named enterprise prospects',
+            'Бот принимает заказ прямо в Telegram и кладёт его в ту же базу, что и сайт. Менеджеру приходит уведомление в рабочий канал.',
+          price: 2_200_000,
+          note: 'Ваш текущий канал продаж остаётся, но перестаёт быть ручным',
           defaultOn: false,
         },
         {
-          id: 'int-documents',
-          name: 'Document automation',
+          id: 'int-1c',
+          name: 'Синхронизация с 1С и складом',
           description:
-            'Bills of lading, commercial invoices, and customs paperwork generated from booking data, with e-signature capture and an immutable audit trail.',
-          price: 7500,
+            'Двусторонний обмен: остатки и цены приходят из 1С, заказы уходят обратно накладной. Очередь повторов, если 1С недоступна.',
+          price: 2_800_000,
+          defaultOn: false,
+        },
+        {
+          id: 'int-delivery',
+          name: 'Доставка: Yandex Go и Express24',
+          description:
+            'Автоматическая передача заказа в службу доставки, расчёт стоимости по адресу и трекинг курьера в личном кабинете покупателя.',
+          price: 1_800_000,
           defaultOn: false,
         },
       ],
     },
 
     {
-      id: 'phase-intelligence',
-      label: 'Phase 03',
-      title: 'Analytics & Intelligence',
+      id: 'phase-analytics',
+      label: 'Этап 03',
+      title: 'Аналитика и рост',
       description:
-        'The reporting layer that turns the operational data the portal collects into decisions about pricing and capacity.',
+        'Слой, который превращает данные о заказах в решения по ассортименту и цене.',
       kind: 'toggles',
       items: [
         {
-          id: 'ana-margin',
-          name: 'Margin intelligence dashboard',
+          id: 'ana-dashboard',
+          name: 'Панель аналитики продаж',
           description:
-            'Live margin per lane, per customer, and per service level, with variance alerts when a lane drops below its target threshold.',
-          price: 11000,
-          note: 'The single most requested item in discovery',
+            'Выручка и маржа по категориям, товарам и курьерам, с предупреждением, когда позиция уходит в минус.',
+          price: 2_400_000,
+          note: 'Самый частый запрос на этапе обсуждения',
           recommended: true,
           defaultOn: true,
         },
         {
-          id: 'ana-forecast',
-          name: 'Demand forecasting model',
+          id: 'ana-seo',
+          name: 'SEO-подготовка и микроразметка',
           description:
-            'A trained model over three years of your historical volume, surfacing lane-level demand forecasts and seasonal capacity warnings.',
-          price: 16000,
+            'Семантика под русские и узбекские запросы, микроразметка товаров, карта сайта, подключение Google Search Console и Яндекс.Вебмастера.',
+          price: 1_200_000,
           defaultOn: false,
         },
         {
-          id: 'ana-customer',
-          name: 'Customer-facing reporting',
+          id: 'ana-crm',
+          name: 'Интеграция с amoCRM или Bitrix24',
           description:
-            'A white-labelled reporting view your customers access directly: spend, on-time performance, and exception history, exportable to CSV and PDF.',
-          price: 8500,
+            'Каждый заказ становится сделкой в CRM с историей общения, чтобы отдел продаж работал в привычном интерфейсе.',
+          price: 1_600_000,
           defaultOn: false,
         },
       ],
@@ -157,102 +195,104 @@ export const proposalTemplate = {
 
     {
       id: 'scope-quantities',
-      label: 'Phase 04',
-      title: 'Scope Variables',
+      label: 'Этап 04',
+      title: 'Объём работ',
       description:
-        'Volume-driven items. Move each control to match the scale you actually need; the total updates as you go.',
+        'Позиции, которые зависят от масштаба. Двигайте ползунки под реальный объём — сумма пересчитывается сразу.',
       kind: 'quantities',
       items: [
         {
-          id: 'qty-screens',
-          name: 'Additional portal screens',
+          id: 'qty-pages',
+          name: 'Дополнительные страницы',
           description:
-            'Screens beyond the fourteen included in the foundation — designed, built, tested, and documented in the design system.',
-          unitLabel: 'screen',
-          unitLabelPlural: 'screens',
-          unitPrice: 1800,
+            'Страницы сверх четырнадцати, входящих в базовый пакет: дизайн, вёрстка, тексты в вашей структуре, проверка на мобильных.',
+          unitLabel: 'страница',
+          plural: ['страница', 'страницы', 'страниц'],
+          unitPrice: 350_000,
           min: 0,
-          max: 20,
+          max: 30,
           step: 1,
-          default: 4,
+          default: 5,
         },
         {
           id: 'qty-locales',
-          name: 'Additional languages',
+          name: 'Дополнительные языки (uz / ru / en)',
           description:
-            'Full localisation of the interface, transactional email, and generated documents, including right-to-left layout support where applicable.',
-          unitLabel: 'language',
-          unitLabelPlural: 'languages',
-          unitPrice: 4200,
+            'Полный перевод интерфейса, писем и SMS, включая узбекскую латиницу. Переключатель языка и отдельные адреса страниц для поиска.',
+          unitLabel: 'язык',
+          plural: ['язык', 'языка', 'языков'],
+          unitPrice: 1_800_000,
           min: 0,
-          max: 8,
+          max: 3,
           step: 1,
           default: 1,
         },
         {
           id: 'qty-training',
-          name: 'Team training sessions',
+          name: 'Обучающие сессии для вашей команды',
           description:
-            'Live, recorded sessions for your operations and customer-success teams, each covering one workflow end to end with a written runbook.',
-          unitLabel: 'session',
-          unitLabelPlural: 'sessions',
-          unitPrice: 950,
+            'Живые занятия с записью для менеджеров и склада: один сценарий за сессию плюс письменная инструкция.',
+          unitLabel: 'сессия',
+          plural: ['сессия', 'сессии', 'сессий'],
+          unitPrice: 400_000,
           min: 0,
-          max: 12,
+          max: 10,
           step: 1,
-          default: 3,
+          default: 2,
         },
       ],
     },
 
     {
       id: 'support-tier',
-      label: 'Phase 05',
-      title: 'Ongoing Partnership',
+      label: 'Этап 05',
+      title: 'Поддержка после запуска',
       description:
-        'What happens after launch. One tier applies for the first twelve months and can be changed at renewal.',
+        'Что происходит после запуска. Тариф действует первые 12 месяцев и меняется при продлении.',
       kind: 'tier',
       defaultOptionId: 'sup-standard',
       options: [
         {
-          id: 'sup-essential',
-          name: 'Essential',
-          summary: 'Keep the lights on.',
+          id: 'sup-basic',
+          name: 'Базовая',
+          summary: 'Сайт работает и обновляется.',
           price: 0,
-          priceLabel: 'Included',
+          priceLabel: 'Включено',
           features: [
-            'Business-hours email support',
-            'Next-business-day response target',
-            'Security patches and dependency updates',
-            'Quarterly platform health report',
+            'Ответ по почте и Telegram в рабочие часы',
+            'Реакция на следующий рабочий день',
+            'Обновления безопасности и библиотек',
+            'Отчёт о состоянии раз в квартал',
           ],
         },
         {
           id: 'sup-standard',
-          name: 'Standard',
-          summary: 'Continuous improvement, not just maintenance.',
-          price: 12000,
-          badge: 'Recommended',
+          name: 'Стандарт',
+          summary: 'Развитие, а не только поддержка.',
+          price: 6_000_000,
+          priceNote: '500 000 сум в месяц × 12',
+          badge: 'Рекомендуем',
           features: [
-            'Everything in Essential',
-            'Four-hour response target during business hours',
-            'Sixteen development hours per month, rolling over one month',
-            'Monthly roadmap and analytics review',
-            'Direct channel to the delivery team',
+            'Всё из «Базовой»',
+            'Реакция в течение 4 часов в рабочее время',
+            '10 часов доработок в месяц, переносятся на месяц вперёд',
+            'Ежемесячный разбор аналитики и плана',
+            'Прямой контакт с разработчиком',
           ],
         },
         {
           id: 'sup-partner',
-          name: 'Partner',
-          summary: 'The studio operates as your product team.',
-          price: 34000,
+          name: 'Партнёрская',
+          summary: 'Студия работает как ваша продуктовая команда.',
+          price: 18_000_000,
+          priceNote: '1 500 000 сум в месяц × 12',
           features: [
-            'Everything in Standard',
-            'One-hour response target with on-call escalation',
-            'Fifty development hours per month',
-            'Dedicated technical lead and named designer',
-            'Quarterly on-site strategy session',
-            '99.9% uptime commitment with service credits',
+            'Всё из «Стандарта»',
+            'Реакция в течение часа, дежурство по критическим сбоям',
+            '35 часов доработок в месяц',
+            'Закреплённый разработчик и дизайнер',
+            'Стратегическая встреча раз в квартал',
+            'Доступность 99,9% с компенсацией при простое',
           ],
         },
       ],
@@ -262,36 +302,38 @@ export const proposalTemplate = {
   discounts: [
     {
       id: 'disc-bundle',
-      label: 'Multi-phase commitment',
-      description: 'Applied automatically when four or more optional capabilities are selected.',
+      label: 'Скидка за пакет опций',
+      description: 'Применяется автоматически при выборе четырёх и более дополнительных возможностей.',
       type: 'percent',
       value: 0.05,
       condition: { minOptionalItems: 4 },
     },
     {
       id: 'disc-early',
-      label: 'Signature before 16 September',
-      description: 'Locks current-year rates for the full engagement.',
+      label: 'Подпись до 17 сентября',
+      description: 'Фиксирует цены этого года на весь проект.',
       type: 'fixed',
-      value: 3500,
+      value: 1_000_000,
       condition: { always: true },
     },
   ],
 
   tax: {
-    id: 'tax-sales',
-    label: 'Sales tax',
-    rate: 0.075,
-    note: 'Applied to the discounted subtotal at the prevailing state rate.',
+    id: 'tax-vat',
+    label: 'НДС',
+    rate: 0.12,
+    note:
+      'Стандартная ставка НДС в Узбекистане — 12%. Для резидентов IT Park по IT-услугам применяется ставка 0%.',
   },
 
   payment: {
     schedule: [
-      { label: 'On signature', share: 0.35 },
-      { label: 'At design sign-off', share: 0.3 },
-      { label: 'On production launch', share: 0.35 },
+      { label: 'Предоплата при подписании', share: 0.4 },
+      { label: 'После утверждения дизайна', share: 0.3 },
+      { label: 'При запуске', share: 0.3 },
     ],
-    terms: 'Net 14 from invoice date. All figures in USD, exclusive of third-party licence fees.',
+    terms:
+      'Оплата в сумах: перечисление на расчётный счёт или перевод на карту Humo / Uzcard. Счёт оплачивается в течение 5 банковских дней. Долларовый эквивалент справочный, по курсу ЦБ РУз.',
   },
 };
 

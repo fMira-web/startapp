@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import { useQuoteStore, useTemplate } from '../../store/useQuoteStore';
+import { useQuoteStore, useMeta } from '../../store/useQuoteStore';
 import { formatDelta } from '../../lib/format';
 import { ICON, STROKE } from '../../lib/icons';
 
@@ -25,7 +25,7 @@ function Indicator({ active, reduce }) {
 }
 
 export default function FeatureToggleCard({ item }) {
-  const meta = useTemplate().meta;
+  const meta = useMeta();
   const active = useQuoteStore((state) => Boolean(state.selections.toggles[item.id]));
   const toggleItem = useQuoteStore((state) => state.toggleItem);
   const reduce = useReducedMotion();
@@ -58,7 +58,7 @@ export default function FeatureToggleCard({ item }) {
             <span className="text-base font-semibold tracking-[-0.01em] text-ink">{item.name}</span>
             {item.recommended && (
               <span className="rounded-full bg-brand-tint px-2 py-0.5 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-brand">
-                Recommended
+                Рекомендуем
               </span>
             )}
           </span>
@@ -81,7 +81,7 @@ export default function FeatureToggleCard({ item }) {
             {formatDelta(item.price, meta)}
           </span>
           <span className="mt-0.5 block text-xs text-ink-muted">
-            {active ? 'Included' : 'Add'}
+            {active ? 'Выбрано' : 'Добавить'}
           </span>
         </span>
       </span>

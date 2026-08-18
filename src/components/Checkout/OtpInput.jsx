@@ -104,7 +104,7 @@ export default function OtpInput({ onChange, onComplete, disabled = false, inval
   return (
     <div
       role="group"
-      aria-label="Six digit verification code"
+      aria-label="Шестизначный код подтверждения"
       className="flex items-center justify-between gap-2 sm:gap-2.5"
     >
       {digits.map((digit, index) => (

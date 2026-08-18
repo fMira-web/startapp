@@ -89,8 +89,8 @@ export default function PhoneField({
   return (
     <div className="flex flex-col gap-2">
       <label htmlFor={inputId} className="flex items-baseline gap-2 text-sm font-medium text-ink-soft">
-        Mobile number
-        {optional && <span className="text-xs font-normal text-ink-muted">Optional</span>}
+        Номер телефона
+        {optional && <span className="text-xs font-normal text-ink-muted">необязательно</span>}
       </label>
 
       <div ref={wrapperRef} className="relative">
@@ -105,7 +105,7 @@ export default function PhoneField({
             onClick={() => setOpen((state) => !state)}
             aria-haspopup="listbox"
             aria-expanded={open}
-            aria-label={`Country calling code, currently ${country.name} ${country.dial}`}
+            aria-label={`Телефонный код страны, сейчас ${country.name} ${country.dial}`}
             className="flex min-h-12 shrink-0 cursor-pointer items-center gap-1.5 border-r border-line px-3.5 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-sunken"
           >
             <span className="text-xs font-semibold tracking-[0.04em] text-ink-muted">
@@ -125,7 +125,7 @@ export default function PhoneField({
             type="tel"
             inputMode="tel"
             autoComplete="tel-national"
-            placeholder="555 123 4567"
+            placeholder="90 123 45 67"
             value={value}
             aria-invalid={invalid || undefined}
             aria-describedby={errorMessage ? errorId : undefined}
@@ -151,8 +151,8 @@ export default function PhoneField({
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   onKeyDown={onSearchKeyDown}
-                  placeholder="Search country or code"
-                  aria-label="Search country or dialling code"
+                  placeholder="Страна или код"
+                  aria-label="Поиск страны или телефонного кода"
                   aria-controls={listboxId}
                   className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted/70"
                 />
@@ -162,11 +162,11 @@ export default function PhoneField({
                 ref={listRef}
                 id={listboxId}
                 role="listbox"
-                aria-label="Countries"
+                aria-label="Страны"
                 className="max-h-64 overflow-y-auto py-1"
               >
                 {results.length === 0 && (
-                  <li className="px-3.5 py-3 text-sm text-ink-muted">No match</li>
+                  <li className="px-3.5 py-3 text-sm text-ink-muted">Ничего не найдено</li>
                 )}
                 {results.map((entry, index) => {
                   const selected = entry.iso === country.iso;

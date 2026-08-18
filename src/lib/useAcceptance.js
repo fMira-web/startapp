@@ -1,11 +1,16 @@
 import { useCallback, useEffect } from 'react';
 import { useQuoteStore, useTemplate, useQuote } from '../store/useQuoteStore';
 import { useAuthStore } from '../store/useAuthStore';
-import { acceptProposal, fetchAcceptance } from './api';
+import { useHubStore } from '../store/useHubStore';
+import { acceptProposal, fetchAcceptance, isOfflineFallback } from './api';
 
 /**
- * Accepting the proposal is now an authenticated action: the session cookie
- * is the signature, so there is no second one-time code at this step.
+ * Принятие предложения — действие авторизованного пользователя: подписью
+ * служит сессия, отдельный одноразовый код здесь не нужен.
+ *
+ * После записи согласия проект сразу публикуется в Центре проектов, и
+ * пользователь переходит туда: принятое предложение без доски исполнителей
+ * было бы тупиком.
  */
 export function useAcceptance() {
   const template = useTemplate();
@@ -20,7 +25,11 @@ export function useAcceptance() {
 
   const status = useAuthStore((state) => state.status);
 
-  // A returning client should see their acceptance, not an "Accept" button.
+  const publish = useHubStore((state) => state.publish);
+  const setView = useHubStore((state) => state.setView);
+  const projectId = useHubStore((state) => state.projectId);
+
+  // Вернувшийся клиент должен видеть своё согласие, а не кнопку «Принять».
   useEffect(() => {
     if (status !== 'authenticated' || acceptance) return;
     let cancelled = false;
@@ -31,6 +40,24 @@ export function useAcceptance() {
       cancelled = true;
     };
   }, [status, acceptance, template.meta.proposalId, setAcceptance]);
+
+  /** Публикует принятую конфигурацию на доске исполнителей. */
+  const publishProject = useCallback(async () => {
+    const weeks = Number.parseInt(template.basePackage.timeline, 10);
+    return publish({
+      proposalId: template.meta.proposalId,
+      title: template.client.projectTitle,
+      summary: template.client.summary,
+      budget: quote.total,
+      currency: quote.currency,
+      weeks: Number.isFinite(weeks) ? weeks : null,
+      lines: quote.lines.map((line) => ({
+        id: line.id,
+        name: line.name,
+        amount: line.amount,
+      })),
+    });
+  }, [publish, template, quote]);
 
   const accept = useCallback(async () => {
     setAccepting(true);
@@ -45,19 +72,32 @@ export function useAcceptance() {
           amount: line.amount,
         })),
       });
+
       setAcceptance({ acceptedAt: result.acceptedAt ?? new Date().toISOString() });
+      await publishProject();
+      setView('hub');
       return true;
     } catch (error) {
-      setAcceptError(
+      // Показываем настоящую причину: «что-то пошло не так» здесь бесполезно.
+      const detail =
         error.status === 401
-          ? 'Your session expired. Sign in again to accept.'
-          : (error.message ?? 'Could not record your acceptance.')
-      );
+          ? 'Сессия истекла. Войдите заново, чтобы принять предложение.'
+          : error.code === 'network'
+            ? 'Не получилось связаться с сервером. Проверьте, что он запущен, и повторите.'
+            : (error.message ?? 'Не удалось записать согласие.');
+      console.error('[accept] не удалось принять предложение:', error);
+      setAcceptError(detail);
       return false;
     }
-  }, [template.meta.proposalId, quote, setAccepting, setAcceptance, setAcceptError]);
+  }, [template, quote, setAccepting, setAcceptance, setAcceptError, publishProject, setView]);
 
-  return { acceptance, accepting, acceptError, accept };
+  /** Кнопка «Открыть Центр проектов» для уже принятого предложения. */
+  const openHub = useCallback(async () => {
+    if (!projectId) await publishProject();
+    setView('hub');
+  }, [projectId, publishProject, setView]);
+
+  return { acceptance, accepting, acceptError, accept, openHub, offline: isOfflineFallback() };
 }
 
 export default useAcceptance;

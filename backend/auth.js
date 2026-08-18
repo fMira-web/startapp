@@ -89,9 +89,9 @@ function normaliseEmail(value) {
  */
 function validatePassword(value) {
   if (typeof value !== 'string') return 'Choose a password.';
-  if (value.length < 8) return 'Use at least 8 characters.';
+  if (value.length < 8) return 'Пароль — минимум 8 символов.';
   if (value.length > 200) return 'That password is too long.';
-  if (WEAK_PASSWORDS.has(value.toLowerCase())) return 'That password is too common. Choose another.';
+  if (WEAK_PASSWORDS.has(value.toLowerCase())) return 'Такой пароль слишком простой. Выберите другой.';
   return null;
 }
 
@@ -138,7 +138,7 @@ export function readSession(req) {
 export function requireAuth(req, res, next) {
   const session = readSession(req);
   if (!session) {
-    return res.status(401).json({ code: 'unauthenticated', message: 'Sign in to continue.' });
+    return res.status(401).json({ code: 'unauthenticated', message: 'Войдите, чтобы продолжить.' });
   }
   req.session = session;
   return next();
@@ -199,7 +199,7 @@ async function issueCode(user, { intro }) {
 async function checkCode(user, submitted) {
   const record = await db.latestCode({ userId: user.id, purpose: PURPOSE_VERIFY });
   if (!record || new Date(record.expires_at).getTime() <= Date.now()) {
-    const error = new Error('That code has expired. Request a new one.');
+    const error = new Error('Срок кода истёк. Запросите новый.');
     error.status = 410;
     error.code = 'expired';
     throw error;
@@ -208,7 +208,7 @@ async function checkCode(user, submitted) {
   const attempts = await db.bumpAttempts(record.id);
   if (attempts > MAX_CODE_ATTEMPTS) {
     await db.consumeCode(record.id);
-    const error = new Error('Too many incorrect attempts. Request a new code.');
+    const error = new Error('Слишком много неверных попыток. Запросите новый код.');
     error.status = 429;
     error.code = 'too_many_attempts';
     throw error;
@@ -223,8 +223,8 @@ async function checkCode(user, submitted) {
     const remaining = MAX_CODE_ATTEMPTS - attempts;
     const error = new Error(
       remaining > 0
-        ? `That code is not right. ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} left.`
-        : 'That code is not right.'
+        ? `Код неверный. Осталось попыток: ${remaining}.`
+        : 'Код неверный.'
     );
     error.status = 401;
     error.code = 'invalid_code';
@@ -258,7 +258,7 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
       if (!normalisedEmail) {
         return res
           .status(400)
-          .json({ code: 'bad_email', field: 'email', message: 'Enter a valid email address.' });
+          .json({ code: 'bad_email', field: 'email', message: 'Введите корректный адрес почты.' });
       }
 
       const passwordProblem = validatePassword(password);
@@ -273,7 +273,7 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
       if (cleanPhone && !E164_RE.test(cleanPhone)) {
         return res
           .status(400)
-          .json({ code: 'bad_phone', field: 'phone', message: 'Enter a valid mobile number.' });
+          .json({ code: 'bad_phone', field: 'phone', message: 'Введите корректный номер телефона.' });
       }
 
       const existing = await db.findUserByEmail(normalisedEmail);
@@ -282,12 +282,12 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
           return res.status(409).json({
             code: 'email_taken',
             field: 'email',
-            message: 'That email already has an account. Sign in instead.',
+            message: 'На эту почту уже есть аккаунт. Войдите.',
           });
         }
         // Registered but never verified: re-send rather than block.
         const result = await issueCode(existing, {
-          intro: 'Use the code below to confirm your email address and activate your account.',
+          intro: 'Введите код ниже, чтобы подтвердить почту и активировать аккаунт.',
         });
         return res.status(200).json({
           status: 'verification_sent',
@@ -304,7 +304,7 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
       });
 
       const result = await issueCode(user, {
-        intro: 'Use the code below to confirm your email address and activate your account.',
+        intro: 'Введите код ниже, чтобы подтвердить почту и активировать аккаунт.',
       });
 
       return res.status(201).json({ status: 'verification_sent', email: user.email, ...result });
@@ -319,12 +319,12 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
       const { email, code } = req.body ?? {};
       const normalisedEmail = normaliseEmail(email);
       if (!normalisedEmail || typeof code !== 'string' || !/^\d{6}$/.test(code)) {
-        return res.status(400).json({ code: 'bad_input', message: 'Enter the six-digit code.' });
+        return res.status(400).json({ code: 'bad_input', message: 'Введите шестизначный код.' });
       }
 
       const user = await db.findUserByEmail(normalisedEmail);
       if (!user) {
-        return res.status(410).json({ code: 'expired', message: 'That code has expired. Request a new one.' });
+        return res.status(410).json({ code: 'expired', message: 'Срок кода истёк. Запросите новый.' });
       }
 
       await checkCode(user, code);
@@ -344,7 +344,7 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
     try {
       const normalisedEmail = normaliseEmail(req.body?.email);
       if (!normalisedEmail) {
-        return res.status(400).json({ code: 'bad_email', message: 'Enter a valid email address.' });
+        return res.status(400).json({ code: 'bad_email', message: 'Введите корректный адрес почты.' });
       }
       const user = await db.findUserByEmail(normalisedEmail);
       // Never reveal whether the address exists.
@@ -368,7 +368,7 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
       if (!normalisedEmail || typeof password !== 'string' || !password) {
         return res
           .status(400)
-          .json({ code: 'bad_credentials', message: 'Enter your email and password.' });
+          .json({ code: 'bad_credentials', message: 'Введите почту и пароль.' });
       }
 
       const user = await db.findUserByEmail(normalisedEmail);
@@ -380,7 +380,7 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
       if (!user || !passwordOk) {
         return res
           .status(401)
-          .json({ code: 'bad_credentials', message: 'Email or password is incorrect.' });
+          .json({ code: 'bad_credentials', message: 'Почта или пароль неверные.' });
       }
 
       if (!user.email_verified) {
@@ -396,7 +396,7 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
         return res.status(403).json({
           code: 'email_unverified',
           email: user.email,
-          message: 'Confirm your email address first — we sent you a code.',
+          message: 'Сначала подтвердите почту — мы отправили код.',
           ...sent,
         });
       }
@@ -420,12 +420,12 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
     try {
       const session = readSession(req);
       if (!session) {
-        return res.status(401).json({ code: 'unauthenticated', message: 'Not signed in.' });
+        return res.status(401).json({ code: 'unauthenticated', message: 'Вы не вошли в аккаунт.' });
       }
       const user = await db.findUserById(session.sub);
       if (!user || !user.email_verified) {
         clearSession(res);
-        return res.status(401).json({ code: 'unauthenticated', message: 'Not signed in.' });
+        return res.status(401).json({ code: 'unauthenticated', message: 'Вы не вошли в аккаунт.' });
       }
       return res.json({ user: publicUser(user) });
     } catch (error) {

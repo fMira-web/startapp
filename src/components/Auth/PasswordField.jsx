@@ -16,13 +16,13 @@ export function scorePassword(value) {
   const variety = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((re) => re.test(value)).length;
   if (variety >= 3 && value.length >= 10) score += 1;
   score = Math.min(4, score);
-  return { score, label: ['', 'Weak', 'Fair', 'Good', 'Strong'][score] };
+  return { score, label: ['', 'Слабый', 'Так себе', 'Хороший', 'Надёжный'][score] };
 }
 
 export default function PasswordField({
   value,
   onChange,
-  label = 'Password',
+  label = 'Пароль',
   autoComplete = 'current-password',
   error = null,
   showStrength = false,
@@ -64,7 +64,7 @@ export default function PasswordField({
         <button
           type="button"
           onClick={() => setVisible((state) => !state)}
-          aria-label={visible ? 'Hide password' : 'Show password'}
+          aria-label={visible ? 'Скрыть пароль' : 'Показать пароль'}
           aria-pressed={visible}
           className="flex w-12 shrink-0 cursor-pointer items-center justify-center text-ink-muted transition-colors duration-150 hover:text-ink"
         >

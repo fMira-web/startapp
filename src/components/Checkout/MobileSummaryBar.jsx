@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { CheckCircle2, ChevronUp, Loader2 } from 'lucide-react';
-import { useTemplate, useQuote } from '../../store/useQuoteStore';
+import { CheckCircle2, ChevronUp, LayoutGrid, Loader2 } from 'lucide-react';
+import { useQuote, useMeta } from '../../store/useQuoteStore';
 import { useAcceptance } from '../../lib/useAcceptance';
 import { formatCurrency } from '../../lib/format';
 import AnimatedPriceTotal from './AnimatedPriceTotal';
@@ -9,10 +9,9 @@ import { SummaryBody } from './StickySummary';
 import { ICON, STROKE } from '../../lib/icons';
 
 export default function MobileSummaryBar() {
-  const template = useTemplate();
   const quote = useQuote();
-  const meta = { ...template.meta, tax: template.tax };
-  const { acceptance, accepting, accept } = useAcceptance();
+  const meta = useMeta();
+  const { acceptance, accepting, accept, openHub } = useAcceptance();
   const [expanded, setExpanded] = useState(false);
   const reduce = useReducedMotion();
 
@@ -31,7 +30,7 @@ export default function MobileSummaryBar() {
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
             className="mx-3 rounded-t-[0.875rem] border border-b-0 border-line bg-surface px-5 pb-4 pt-5 shadow-[var(--shadow-float)]"
           >
-            <p className="label-caps mb-2">Your configuration</p>
+            <p className="label-caps mb-2">Ваша конфигурация</p>
             <SummaryBody quote={quote} meta={meta} compact />
           </motion.div>
         )}
@@ -47,12 +46,11 @@ export default function MobileSummaryBar() {
           >
             <span className="min-w-0">
               <span className="block text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-ink-muted">
-                Total
+                Итого
               </span>
               <AnimatedPriceTotal
                 value={quote.total}
-                locale={meta.locale}
-                currency={meta.currency}
+                meta={meta}
                 className="block text-xl font-semibold tracking-[-0.02em] text-ink"
               />
             </span>
@@ -65,15 +63,19 @@ export default function MobileSummaryBar() {
               <ChevronUp size={ICON.md} strokeWidth={STROKE.regular} />
             </motion.span>
             <span className="sr-only">
-              {expanded ? 'Hide line items' : 'Show line items'}
+              {expanded ? 'Скрыть позиции' : 'Показать позиции'}
             </span>
           </button>
 
           {acceptance ? (
-            <span className="inline-flex min-h-11 items-center gap-1.5 rounded-control bg-signal-tint px-4 text-sm font-medium text-signal ring-1 ring-signal/20">
-              <CheckCircle2 size={ICON.sm} strokeWidth={STROKE.regular} aria-hidden="true" />
-              Accepted
-            </span>
+            <button
+              type="button"
+              onClick={openHub}
+              className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-control bg-brand px-4 text-sm font-semibold text-white transition-colors duration-200 hover:bg-brand-hover"
+            >
+              <LayoutGrid size={ICON.sm} strokeWidth={STROKE.regular} aria-hidden="true" />
+              В Центр
+            </button>
           ) : (
             <motion.button
               type="button"
@@ -91,14 +93,14 @@ export default function MobileSummaryBar() {
                   aria-hidden="true"
                 />
               )}
-              Accept &amp; Sign
+              Принять и подписать
             </motion.button>
           )}
         </div>
       </div>
 
       <div className="sr-only" aria-live="polite" aria-atomic="true">
-        Total {formatCurrency(quote.total, meta)}
+        Итого {formatCurrency(quote.total, meta)}
       </div>
     </div>
   );

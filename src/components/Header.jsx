@@ -1,14 +1,51 @@
 import { motion, useScroll, useSpring } from 'framer-motion';
-import { CheckCircle2, FileText, LogOut } from 'lucide-react';
+import { CheckCircle2, FileText, LayoutGrid, LogOut } from 'lucide-react';
 import { useQuoteStore, useTemplate } from '../store/useQuoteStore';
 import { useAuthStore } from '../store/useAuthStore';
+import { useHubStore } from '../store/useHubStore';
 import { ICON, STROKE } from '../lib/icons';
+
+function CurrencySwitch() {
+  const currencyView = useQuoteStore((state) => state.currencyView);
+  const setCurrencyView = useQuoteStore((state) => state.setCurrencyView);
+
+  return (
+    <div
+      role="group"
+      aria-label="Валюта отображения"
+      className="flex items-center gap-0.5 rounded-full border border-line bg-surface p-0.5"
+    >
+      {[
+        { id: 'UZS', label: 'сум' },
+        { id: 'USD', label: '$' },
+      ].map((option) => {
+        const active = currencyView === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => setCurrencyView(option.id)}
+            className={`min-h-8 cursor-pointer rounded-full px-2.5 text-xs font-semibold transition-colors duration-150 ${
+              active ? 'bg-brand text-white' : 'text-ink-muted hover:text-ink'
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function Header() {
   const template = useTemplate();
   const acceptance = useQuoteStore((state) => state.acceptance);
   const user = useAuthStore((state) => state.user);
   const signOut = useAuthStore((state) => state.signOut);
+  const view = useHubStore((state) => state.view);
+  const setView = useHubStore((state) => state.setView);
+  const projectId = useHubStore((state) => state.projectId);
 
   const { scrollYProgress } = useScroll();
   const progress = useSpring(scrollYProgress, { stiffness: 180, damping: 34, mass: 0.4 });
@@ -28,21 +65,38 @@ export default function Header() {
               {template.meta.studio.name}
             </p>
             <p className="truncate text-xs text-ink-muted">
-              Proposal {template.meta.proposalId} · v{template.meta.version}
+              Предложение {template.meta.proposalId} · v{template.meta.version}
             </p>
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          {projectId && (
+            <button
+              type="button"
+              onClick={() => setView(view === 'hub' ? 'proposal' : 'hub')}
+              className={`hidden min-h-9 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[0.8125rem] font-medium transition-colors duration-150 sm:inline-flex ${
+                view === 'hub'
+                  ? 'bg-brand text-white'
+                  : 'border border-line bg-surface text-ink-soft hover:text-ink'
+              }`}
+            >
+              <LayoutGrid size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
+              {view === 'hub' ? 'К предложению' : 'Центр проектов'}
+            </button>
+          )}
+
+          <CurrencySwitch />
+
           {acceptance && (
-            <span className="hidden items-center gap-1.5 rounded-full bg-signal-tint px-3 py-1.5 text-xs font-medium text-signal ring-1 ring-signal/20 sm:inline-flex">
+            <span className="hidden items-center gap-1.5 rounded-full bg-signal-tint px-3 py-1.5 text-xs font-medium text-signal ring-1 ring-signal/20 md:inline-flex">
               <CheckCircle2 size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
-              Accepted
+              Принято
             </span>
           )}
 
           {user && (
-            <span className="hidden max-w-[14rem] truncate text-sm text-ink-muted md:inline">
+            <span className="hidden max-w-[12rem] truncate text-sm text-ink-muted lg:inline">
               {user.fullName || user.email}
             </span>
           )}
@@ -53,8 +107,8 @@ export default function Header() {
             className="flex min-h-11 cursor-pointer items-center gap-1.5 rounded-control px-2.5 text-sm font-medium text-ink-muted transition-colors duration-150 hover:bg-surface hover:text-ink"
           >
             <LogOut size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
-            <span className="hidden sm:inline">Sign out</span>
-            <span className="sr-only sm:hidden">Sign out</span>
+            <span className="hidden sm:inline">Выйти</span>
+            <span className="sr-only sm:hidden">Выйти</span>
           </button>
         </div>
       </div>

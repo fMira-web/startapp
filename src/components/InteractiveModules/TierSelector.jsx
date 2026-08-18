@@ -1,12 +1,12 @@
 import { useId } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import { useQuoteStore, useTemplate } from '../../store/useQuoteStore';
+import { useQuoteStore, useMeta } from '../../store/useQuoteStore';
 import { formatCurrency } from '../../lib/format';
 import { ICON, STROKE } from '../../lib/icons';
 
 export default function TierSelector({ section }) {
-  const meta = useTemplate().meta;
+  const meta = useMeta();
   const selectedId = useQuoteStore((state) => state.selections.tiers[section.id]);
   const selectTier = useQuoteStore((state) => state.selectTier);
   const reduce = useReducedMotion();
@@ -82,10 +82,10 @@ export default function TierSelector({ section }) {
               </span>
 
               <span className="tnum mt-5 block text-2xl font-semibold tracking-[-0.02em] text-ink">
-                {option.price > 0 ? formatCurrency(option.price, meta) : (option.priceLabel ?? 'Included')}
+                {option.price > 0 ? formatCurrency(option.price, meta) : (option.priceLabel ?? 'Включено')}
               </span>
               <span className="mt-0.5 block text-xs text-ink-muted">
-                {option.price > 0 ? 'per year' : 'with the foundation'}
+                {option.price > 0 ? (option.priceNote ?? 'за 12 месяцев') : 'вместе с базовым пакетом'}
               </span>
 
               <span className="mt-5 block border-t border-line pt-4">

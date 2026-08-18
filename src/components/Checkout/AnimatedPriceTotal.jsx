@@ -3,20 +3,15 @@ import { useSpring, useReducedMotion } from 'framer-motion';
 import { formatCurrency } from '../../lib/format';
 
 /**
- * Rolling-number transition for the running total.
+ * Плавный пересчёт итоговой суммы.
  *
- * A spring drives the displayed value toward the real total, so a selection
- * change reads as the number travelling rather than snapping. Digits are
- * tabular so the string never reflows while it counts.
+ * Пружина ведёт показываемое значение к настоящему итогу, поэтому смена
+ * конфигурации читается как «число доехало», а не «скакнуло». Цифры
+ * табличные, строка не дёргается по ширине.
  *
- * Under prefers-reduced-motion the value is set directly.
+ * При prefers-reduced-motion значение ставится напрямую.
  */
-export default function AnimatedPriceTotal({
-  value,
-  locale = 'en-US',
-  currency = 'USD',
-  className = '',
-}) {
+export default function AnimatedPriceTotal({ value, meta, className = '' }) {
   const reduce = useReducedMotion();
   const [display, setDisplay] = useState(value);
   const mounted = useRef(false);
@@ -52,11 +47,8 @@ export default function AnimatedPriceTotal({
   }, [spring, reduce]);
 
   return (
-    <span
-      className={`tnum ${className}`}
-      aria-label={formatCurrency(value, { locale, currency })}
-    >
-      <span aria-hidden="true">{formatCurrency(display, { locale, currency })}</span>
+    <span className={`tnum ${className}`} aria-label={formatCurrency(value, meta)}>
+      <span aria-hidden="true">{formatCurrency(display, meta)}</span>
     </span>
   );
 }

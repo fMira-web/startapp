@@ -12,6 +12,52 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:400
  */
 export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === '1';
 
+/**
+ * Если сервер недоступен, предложение и Центр проектов продолжают работать
+ * в браузере на демо-транспорте. Логин остаётся строгим — там подмена
+ * недопустима, — а вот кнопка «Принять и подписать» не имеет права молча
+ * умирать из-за спящего бесплатного хостинга.
+ */
+let fallbackActive = DEMO_MODE;
+let sessionHint = null;
+
+/** Кто вошёл — чтобы локальный режим знал пользователя, если сервер отвалится. */
+export function rememberSession(user) {
+  sessionHint = user ?? null;
+  if (fallbackActive) demo.adoptSession(sessionHint);
+}
+
+export function isOfflineFallback() {
+  return fallbackActive && !DEMO_MODE;
+}
+
+function fallbackWorthy(error) {
+  return (
+    error?.code === 'network' ||
+    error?.code === 'timeout' ||
+    error?.status === 503 ||
+    error?.status === 502 ||
+    error?.status === 404
+  );
+}
+
+/**
+ * Пробует настоящий API и, если он недоступен, отвечает демо-транспортом.
+ * Ошибки логики (400, 401, 403) пробрасываются как есть — их надо показывать.
+ */
+async function callWithFallback(realCall, demoCall) {
+  if (fallbackActive) return demoCall();
+  try {
+    return await realCall();
+  } catch (error) {
+    if (!fallbackWorthy(error)) throw error;
+    console.warn('[api] сервер недоступен, переключаюсь на локальный режим:', error.message);
+    fallbackActive = true;
+    demo.adoptSession(sessionHint);
+    return demoCall();
+  }
+}
+
 class ApiError extends Error {
   constructor(message, { status = 0, code = 'unknown', field = null, retryAfter = null, payload = null } = {}) {
     super(message);
@@ -135,21 +181,111 @@ export async function fetchCurrentUser() {
 /* ------------------------------------------------------------------ */
 
 export function acceptProposal(input) {
-  if (DEMO_MODE) return demo.acceptProposal(input);
-  return request('/api/proposal/accept', { body: input });
+  return callWithFallback(
+    () => request('/api/proposal/accept', { body: input }),
+    () => demo.acceptProposal(input)
+  );
 }
 
 export async function fetchAcceptance(proposalId) {
-  if (DEMO_MODE) return demo.fetchAcceptance(proposalId);
   try {
-    const payload = await request(
-      `/api/proposal/acceptance?proposalId=${encodeURIComponent(proposalId)}`,
-      { method: 'GET', timeoutMs: 60000 }
+    const payload = await callWithFallback(
+      () =>
+        request(`/api/proposal/acceptance?proposalId=${encodeURIComponent(proposalId)}`, {
+          method: 'GET',
+          timeoutMs: 60000,
+        }),
+      () => demo.fetchAcceptance(proposalId)
     );
-    return payload.acceptance ?? null;
+    return payload?.acceptance ?? payload ?? null;
   } catch {
     return null;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Центр проектов                                                      */
+/* ------------------------------------------------------------------ */
+
+/** Публикует принятый проект на доске исполнителей. */
+export async function createHubProject(input) {
+  const payload = await callWithFallback(
+    () => request('/api/hub/projects', { body: input }),
+    () => demo.createHubProject(input)
+  );
+  return payload.project;
+}
+
+/** Полное состояние доски: проект, отклики, сделка, лента событий. */
+export async function fetchHubProject(projectId) {
+  return callWithFallback(
+    () => request(`/api/hub/projects/${encodeURIComponent(projectId)}`, { method: 'GET' }),
+    () => demo.fetchHubProject(projectId)
+  );
+}
+
+export async function fetchHubProjects() {
+  const payload = await callWithFallback(
+    () => request('/api/hub/projects', { method: 'GET' }),
+    () => demo.fetchHubProjects()
+  );
+  return payload.projects ?? [];
+}
+
+export async function fetchDevelopers(role = null) {
+  const query = role ? `?role=${encodeURIComponent(role)}` : '';
+  const payload = await callWithFallback(
+    () => request(`/api/hub/developers${query}`, { method: 'GET' }),
+    () => demo.fetchDevelopers(role)
+  );
+  return payload.developers ?? [];
+}
+
+/** Исполнитель откликается на проект. */
+export async function placeBid(projectId, input) {
+  const payload = await callWithFallback(
+    () => request(`/api/hub/projects/${encodeURIComponent(projectId)}/bids`, { body: input }),
+    () => demo.placeBid(projectId, input)
+  );
+  return payload.bid;
+}
+
+/** Заказчик принимает отклик — сумма резервируется. */
+export async function acceptBid(projectId, bidId) {
+  const payload = await callWithFallback(
+    () =>
+      request(
+        `/api/hub/projects/${encodeURIComponent(projectId)}/bids/${encodeURIComponent(bidId)}/accept`,
+        { body: {} }
+      ),
+    () => demo.acceptBid(projectId, bidId)
+  );
+  return payload.deal;
+}
+
+export async function startWork(projectId) {
+  const payload = await callWithFallback(
+    () => request(`/api/hub/projects/${encodeURIComponent(projectId)}/start`, { body: {} }),
+    () => demo.startWork(projectId)
+  );
+  return payload.deal;
+}
+
+export async function submitWork(projectId, input) {
+  const payload = await callWithFallback(
+    () => request(`/api/hub/projects/${encodeURIComponent(projectId)}/submit`, { body: input }),
+    () => demo.submitWork(projectId, input)
+  );
+  return payload.deal;
+}
+
+/** Заказчик подтверждает приёмку — деньги уходят исполнителю. */
+export async function releasePayment(projectId) {
+  const payload = await callWithFallback(
+    () => request(`/api/hub/projects/${encodeURIComponent(projectId)}/release`, { body: {} }),
+    () => demo.releasePayment(projectId)
+  );
+  return payload.deal;
 }
 
 /* ------------------------------------------------------------------ */

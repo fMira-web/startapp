@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import * as db from './db.js';
 import { EMAIL_MODE, EMAIL_DESCRIPTION } from './mailer.js';
 import { registerAuthRoutes, requireAuth } from './auth.js';
+import { registerHubRoutes, SEED_DEVELOPERS } from './hub.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
@@ -107,8 +108,10 @@ app.get('/api/capabilities', (_req, res) => {
 
 app.use('/api/auth', requireStorage);
 app.use('/api/proposal', requireStorage);
+app.use('/api/hub', requireStorage);
 
 registerAuthRoutes(app, { authLimiter, codeLimiter });
+registerHubRoutes(app);
 
 /** Recording acceptance now depends on the session, not on a one-time code. */
 app.post('/api/proposal/accept', requireAuth, async (req, res) => {
@@ -185,6 +188,14 @@ async function start() {
     const { mode } = await db.initDb();
     storage.ready = true;
     console.info(`Storage ready:   ${mode}`);
+
+    // Доска исполнителей должна быть непустой с первого запроса.
+    try {
+      const count = await db.ensureSeedDevelopers(SEED_DEVELOPERS);
+      console.info(`Исполнителей в Центре: ${count}`);
+    } catch (seedError) {
+      console.warn('Не удалось засеять исполнителей:', seedError.message);
+    }
   } catch (error) {
     storage.error = error.message;
     console.error('DATABASE CONNECTION FAILED:', error.message);

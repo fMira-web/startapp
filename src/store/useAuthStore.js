@@ -29,6 +29,7 @@ export const useAuthStore = create((set, get) => ({
   async bootstrap() {
     try {
       const user = await api.fetchCurrentUser();
+      api.rememberSession(user);
       set({ status: user ? 'authenticated' : 'anonymous', user });
     } catch {
       set({ status: 'anonymous', user: null });
@@ -73,6 +74,7 @@ export const useAuthStore = create((set, get) => ({
     set({ pending: true, error: null, fieldErrors: {} });
     try {
       const result = await api.login(input);
+      api.rememberSession(result.user);
       set({ pending: false, status: 'authenticated', user: result.user, pendingEmail: null });
       return true;
     } catch (error) {
@@ -103,6 +105,7 @@ export const useAuthStore = create((set, get) => ({
     set({ pending: true, error: null });
     try {
       const result = await api.verifyEmail({ email, code });
+      api.rememberSession(result.user);
       set({
         pending: false,
         status: 'authenticated',
@@ -141,8 +144,9 @@ export const useAuthStore = create((set, get) => ({
     try {
       await api.logout();
     } catch {
-      /* clearing local state matters more than the round trip */
+      /* локальное состояние важнее, чем ответ сервера */
     }
+    api.rememberSession(null);
     set({
       status: 'anonymous',
       user: null,

@@ -48,7 +48,7 @@ function TextField({
     <div className="flex flex-col gap-2">
       <label htmlFor={id} className="flex items-baseline gap-2 text-sm font-medium text-ink-soft">
         {label}
-        {optional && <span className="text-xs font-normal text-ink-muted">Optional</span>}
+        {optional && <span className="text-xs font-normal text-ink-muted">необязательно</span>}
       </label>
       <input
         id={id}
@@ -155,11 +155,11 @@ export default function AuthScreen() {
 
   const submitRegister = async () => {
     const problems = {};
-    if (!isValidEmail(email)) problems.email = 'Enter a valid email address.';
-    if (password.length < 8) problems.password = 'Use at least 8 characters.';
+    if (!isValidEmail(email)) problems.email = 'Введите корректный адрес почты.';
+    if (password.length < 8) problems.password = 'Пароль — минимум 8 символов.';
     const phone = nationalNumber.trim() ? toE164(country.dialDigits, nationalNumber) : null;
     if (nationalNumber.trim() && !phone) {
-      problems.phone = 'Enter a valid mobile number, or leave the field empty.';
+      problems.phone = 'Введите корректный номер телефона или оставьте поле пустым.';
     }
     setLocalErrors(problems);
     if (Object.keys(problems).length > 0) return;
@@ -178,8 +178,8 @@ export default function AuthScreen() {
 
   const submitLogin = async () => {
     const problems = {};
-    if (!isValidEmail(email)) problems.email = 'Enter a valid email address.';
-    if (!password) problems.password = 'Enter your password.';
+    if (!isValidEmail(email)) problems.email = 'Введите корректный адрес почты.';
+    if (!password) problems.password = 'Введите пароль.';
     setLocalErrors(problems);
     if (Object.keys(problems).length > 0) return;
     await doLogin({ email: email.trim(), password });
@@ -221,8 +221,8 @@ export default function AuthScreen() {
       {DEMO_MODE && (
         <div className="border-b border-line bg-brand-tint">
           <p className="mx-auto w-full max-w-[1240px] px-5 py-2.5 text-center text-[0.8125rem] leading-relaxed text-brand sm:px-8">
-            Demo build — no server, no database, no email is sent. Register with any address and
-            the code appears on screen.
+            Демо-режим — без сервера, базы и писем. Зарегистрируйтесь на любой адрес, код
+            появится прямо на экране.
           </p>
         </div>
       )}
@@ -233,15 +233,15 @@ export default function AuthScreen() {
             {/* ---------------------------------------------- sign in --- */}
             {screen === 'login' && (
               <motion.section key="login" {...motionProps} aria-labelledby="auth-heading">
-                <p className="label-caps">Client access</p>
+                <p className="label-caps">Доступ клиента</p>
                 <h1
                   id="auth-heading"
                   className="mt-3 text-[1.75rem] font-semibold tracking-[-0.025em] text-ink"
                 >
-                  Sign in
+                  Вход
                 </h1>
                 <p className="mt-2 text-[0.9375rem] leading-relaxed text-ink-muted">
-                  Your proposal is private. Sign in to read it and configure your scope.
+                  Предложение приватное. Войдите, чтобы открыть его и собрать свою конфигурацию.
                 </p>
 
                 <form
@@ -255,10 +255,10 @@ export default function AuthScreen() {
 
                   <TextField
                     id="login-email"
-                    label="Email address"
+                    label="Электронная почта"
                     type="email"
                     autoComplete="email"
-                    placeholder="you@company.com"
+                    placeholder="siz@kompaniya.uz"
                     value={email}
                     onChange={(next) => {
                       setEmail(next);
@@ -278,19 +278,19 @@ export default function AuthScreen() {
                     error={combinedErrors.password}
                   />
 
-                  <SubmitButton pending={pending} pendingLabel="Signing in">
-                    Sign in
+                  <SubmitButton pending={pending} pendingLabel="Вхожу">
+                    Войти
                   </SubmitButton>
                 </form>
 
                 <p className="mt-6 text-center text-sm text-ink-muted">
-                  No account yet?{' '}
+                  Ещё нет аккаунта?{' '}
                   <button
                     type="button"
                     onClick={showRegister}
                     className="cursor-pointer font-medium text-brand underline-offset-4 hover:underline"
                   >
-                    Create one
+                    Создайте его
                   </button>
                 </p>
               </motion.section>
@@ -299,15 +299,15 @@ export default function AuthScreen() {
             {/* --------------------------------------------- register --- */}
             {screen === 'register' && (
               <motion.section key="register" {...motionProps} aria-labelledby="auth-heading">
-                <p className="label-caps">Client access</p>
+                <p className="label-caps">Доступ клиента</p>
                 <h1
                   id="auth-heading"
                   className="mt-3 text-[1.75rem] font-semibold tracking-[-0.025em] text-ink"
                 >
-                  Create your account
+                  Создайте аккаунт
                 </h1>
                 <p className="mt-2 text-[0.9375rem] leading-relaxed text-ink-muted">
-                  We email a six-digit code to confirm the address before anything is shared.
+                  Мы отправим шестизначный код на почту — до подтверждения никакие данные не откроются.
                 </p>
 
                 <form
@@ -321,9 +321,9 @@ export default function AuthScreen() {
 
                   <TextField
                     id="register-name"
-                    label="Full name"
+                    label="Имя и фамилия"
                     autoComplete="name"
-                    placeholder="Daniel Reyes"
+                    placeholder="Нодира Юсупова"
                     value={fullName}
                     onChange={setFullName}
                     optional
@@ -332,10 +332,10 @@ export default function AuthScreen() {
 
                   <TextField
                     id="register-email"
-                    label="Email address"
+                    label="Электронная почта"
                     type="email"
                     autoComplete="email"
-                    placeholder="you@company.com"
+                    placeholder="siz@kompaniya.uz"
                     value={email}
                     onChange={(next) => {
                       setEmail(next);
@@ -351,9 +351,9 @@ export default function AuthScreen() {
                       setLocalErrors((state) => ({ ...state, password: null }));
                     }}
                     autoComplete="new-password"
-                    label="Password"
+                    label="Пароль"
                     showStrength
-                    hint="At least 8 characters. Longer beats complicated."
+                    hint="Минимум 8 символов. Длинный лучше, чем сложный."
                     error={combinedErrors.password}
                   />
 
@@ -370,19 +370,19 @@ export default function AuthScreen() {
                     optional
                   />
 
-                  <SubmitButton pending={pending} pendingLabel="Creating account">
-                    Create account
+                  <SubmitButton pending={pending} pendingLabel="Создаю аккаунт">
+                    Создать аккаунт
                   </SubmitButton>
                 </form>
 
                 <p className="mt-6 text-center text-sm text-ink-muted">
-                  Already registered?{' '}
+                  Уже зарегистрированы?{' '}
                   <button
                     type="button"
                     onClick={showLogin}
                     className="cursor-pointer font-medium text-brand underline-offset-4 hover:underline"
                   >
-                    Sign in
+                    Войти
                   </button>
                 </p>
               </motion.section>
@@ -397,20 +397,20 @@ export default function AuthScreen() {
                   className="-ml-1 flex min-h-11 cursor-pointer items-center gap-1.5 rounded-control px-1 text-sm font-medium text-ink-muted transition-colors duration-150 hover:text-ink"
                 >
                   <ArrowLeft size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
-                  Back
+                  Назад
                 </button>
 
-                <p className="label-caps mt-3">Step 2 of 2</p>
+                <p className="label-caps mt-3">Шаг 2 из 2</p>
                 <h1
                   id="auth-heading"
                   className="mt-3 text-[1.75rem] font-semibold tracking-[-0.025em] text-ink"
                 >
-                  Check your email
+                  Проверьте почту
                 </h1>
                 <p className="mt-2 text-[0.9375rem] leading-relaxed text-ink-muted">
-                  We sent a six-digit code to{' '}
-                  <span className="font-medium text-ink-soft">{pendingEmail}</span>. It expires in
-                  ten minutes, and you can paste it.
+                  Мы отправили шестизначный код на{' '}
+                  <span className="font-medium text-ink-soft">{pendingEmail}</span>. Он действует
+                  десять минут, код можно вставить из буфера.
                 </p>
 
                 <div className="mt-7">
@@ -426,8 +426,8 @@ export default function AuthScreen() {
                 {devCode && (
                   <p className="tnum mt-4 rounded-control border border-line bg-surface-sunken px-3 py-2 text-center text-xs text-ink-muted">
                     {DEMO_MODE
-                      ? 'Demo — no email is sent. Your code is '
-                      : 'No mail provider configured on the server — your code is '}
+                      ? 'Демо-режим — письма не отправляются. Ваш код: '
+                      : 'На сервере не настроена почта — ваш код: '}
                     {devCode}
                   </p>
                 )}
@@ -441,21 +441,21 @@ export default function AuthScreen() {
                 <div className="mt-5">
                   <SubmitButton
                     pending={pending}
-                    pendingLabel="Verifying"
+                    pendingLabel="Проверяю"
                     disabled={code.length < 6}
                     onClick={(event) => {
                       event.preventDefault();
                       submitCode(code);
                     }}
                   >
-                    Verify and continue
+                    Подтвердить и продолжить
                   </SubmitButton>
                 </div>
 
                 <div className="mt-4 text-center">
                   {resendAfter > 0 ? (
                     <p className="tnum text-sm text-ink-muted">
-                      You can request a new code in {resendAfter}s
+                      Новый код можно запросить через {resendAfter} с
                     </p>
                   ) : (
                     <button
@@ -464,7 +464,7 @@ export default function AuthScreen() {
                       disabled={pending}
                       className="min-h-11 cursor-pointer rounded-control px-2 text-sm font-medium text-brand underline-offset-4 hover:underline disabled:opacity-45"
                     >
-                      Send a new code
+                      Отправить новый код
                     </button>
                   )}
                 </div>
@@ -474,7 +474,7 @@ export default function AuthScreen() {
 
           <p className="mt-10 flex items-center justify-center gap-1.5 text-xs text-ink-muted">
             <Lock size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
-            Your password is stored only as a scrypt hash
+            Пароль хранится только в виде scrypt-хеша
           </p>
         </div>
       </main>

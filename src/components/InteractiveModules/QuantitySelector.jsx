@@ -1,12 +1,12 @@
 import { useId } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Minus, Plus } from 'lucide-react';
-import { useQuoteStore, useTemplate } from '../../store/useQuoteStore';
-import { formatCurrency } from '../../lib/format';
+import { useQuoteStore, useMeta } from '../../store/useQuoteStore';
+import { formatCurrency, pluralize } from '../../lib/format';
 import { ICON, STROKE } from '../../lib/icons';
 
 export default function QuantitySelector({ item }) {
-  const meta = useTemplate().meta;
+  const meta = useMeta();
   const quantity = useQuoteStore((state) => state.selections.quantities[item.id] ?? 0);
   const setQuantity = useQuoteStore((state) => state.setQuantity);
   const stepQuantity = useQuoteStore((state) => state.stepQuantity);
@@ -19,7 +19,7 @@ export default function QuantitySelector({ item }) {
   const max = item.max ?? 10;
   const step = item.step ?? 1;
   const lineTotal = quantity * item.unitPrice;
-  const unit = quantity === 1 ? item.unitLabel : (item.unitLabelPlural ?? `${item.unitLabel}s`);
+  const unit = item.plural ? pluralize(quantity, item.plural) : item.unitLabel;
   const fill = max === min ? 0 : ((quantity - min) / (max - min)) * 100;
 
   return (
@@ -46,10 +46,10 @@ export default function QuantitySelector({ item }) {
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             className="text-base font-semibold tracking-[-0.01em] text-ink"
           >
-            {lineTotal > 0 ? formatCurrency(lineTotal, meta) : 'Not included'}
+            {lineTotal > 0 ? formatCurrency(lineTotal, meta) : 'Не включено'}
           </motion.p>
           <p className="mt-0.5 text-xs text-ink-muted">
-            {formatCurrency(item.unitPrice, meta)} per {item.unitLabel}
+            {formatCurrency(item.unitPrice, meta)} за 1 {item.unitLabel}
           </p>
         </div>
       </div>
@@ -60,7 +60,7 @@ export default function QuantitySelector({ item }) {
             type="button"
             onClick={() => stepQuantity(item.id, -1)}
             disabled={quantity <= min}
-            aria-label={`Decrease ${item.name}`}
+            aria-label={`Уменьшить: ${item.name}`}
             className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-[8px] text-ink-soft transition-colors duration-150 hover:bg-surface hover:text-ink disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
           >
             <Minus size={ICON.sm} strokeWidth={STROKE.regular} aria-hidden="true" />
@@ -77,7 +77,7 @@ export default function QuantitySelector({ item }) {
             type="button"
             onClick={() => stepQuantity(item.id, 1)}
             disabled={quantity >= max}
-            aria-label={`Increase ${item.name}`}
+            aria-label={`Увеличить: ${item.name}`}
             className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-[8px] text-ink-soft transition-colors duration-150 hover:bg-surface hover:text-ink disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
           >
             <Plus size={ICON.sm} strokeWidth={STROKE.regular} aria-hidden="true" />

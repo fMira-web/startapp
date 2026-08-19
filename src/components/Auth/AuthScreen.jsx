@@ -517,21 +517,22 @@ export default function AuthScreen() {
                   />
                 </div>
 
-                {devCode && (
+                {/* Код — секрет получателя. Показывать его на экране можно
+                    только там, где письма заведомо не отправляются: демо без
+                    сервера и локальная разработка. В собранном бою этот блок
+                    не существует. */}
+                {devCode && (DEMO_MODE || import.meta.env.DEV) && (
                   <div className="mt-4 rounded-control border border-line bg-surface-sunken px-4 py-3 text-center">
                     <p className="text-xs leading-relaxed text-ink-muted">
                       {DEMO_MODE
                         ? 'Демо-режим — письма не отправляются.'
-                        : (deliveryNote ?? 'На сервере не настроена почта.')}
+                        : (deliveryNote ?? 'Локальный сервер без почты.')}
                     </p>
                     <p className="mt-2 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-ink-muted">
-                      Ваш код
+                      Код для локальной проверки
                     </p>
                     <p className="tnum mt-1 text-[1.75rem] font-semibold tracking-[0.3em] text-brand">
                       {devCode}
-                    </p>
-                    <p className="mt-1.5 text-xs text-ink-muted">
-                      Введите его выше — регистрация продолжится как обычно.
                     </p>
                   </div>
                 )}

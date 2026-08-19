@@ -13,11 +13,11 @@ import { Resend } from 'resend';
  * SMTP_USER is the mailbox the server sends *through*. The recipient is always
  * the address the person typed into the form.
  *
- * Доставка не имеет права ломать регистрацию. Пока домен в Resend не
- * подтверждён, провайдер принимает письма только на адрес владельца ключа —
- * и раньше все остальные регистрации падали пятисоткой. Теперь провайдерская
- * ошибка не выбрасывается наружу: код возвращается на экран, человек
- * подтверждает почту и продолжает, а причина уходит в лог.
+ * Код подтверждения — секрет получателя. В бою он уходит только письмом:
+ * показать его в ответе API значит разрешить регистрацию на чужой адрес.
+ * Поэтому при неудачной доставке в production бросается честная ошибка, а
+ * `devCode` возвращается исключительно на локальной машине, где почтового
+ * провайдера может не быть вовсе.
  */
 
 const IS_PRODUCTION = (process.env.NODE_ENV ?? 'development') === 'production';
@@ -195,18 +195,34 @@ export async function sendCodeEmail({ to, code, name, intro }) {
     }
   }
 
-  // Дошли сюда — письмо не ушло (или отправлять было нечем). Регистрацию
-  // это остановить не должно: отдаём код обратно в интерфейс.
-  const note = lastProblem
-    ? (describeDeliveryBlock(lastProblem) ??
-      'Письмо не удалось отправить, поэтому код показан здесь.')
-    : IS_PRODUCTION
-      ? 'Почтовый провайдер не настроен, поэтому код показан здесь.'
-      : null;
+  // Письмо не ушло. В бою это ошибка, а не повод показать код на экране:
+  // иначе зарегистрироваться на чужой адрес сможет кто угодно.
+  if (IS_PRODUCTION) {
+    const reason = lastProblem
+      ? (describeDeliveryBlock(lastProblem) ?? lastProblem.message)
+      : 'Почтовый провайдер не настроен (RESEND_API_KEY или SMTP_HOST/SMTP_USER/SMTP_PASS).';
+    console.error(`[mail] код для ${to} не доставлен: ${reason}`);
 
+    const error = new Error(
+      'Не удалось отправить письмо с кодом. Попробуйте ещё раз через минуту.'
+    );
+    error.status = 502;
+    error.code = 'email_delivery_failed';
+    error.expose = true;
+    error.reason = reason;
+    throw error;
+  }
+
+  // Локальная разработка: провайдера может не быть, и это нормально —
+  // код печатается в консоль сервера и подсказывается интерфейсу.
   console.info(
     `\n  ┌─ verification email ────────────────────\n  │  to:   ${to}\n  │  code: ${code}\n  └─────────────────────────────────────────\n`
   );
 
-  return { devCode: code, ...(note ? { deliveryNote: note } : {}) };
+  return {
+    devCode: code,
+    deliveryNote: lastProblem
+      ? (describeDeliveryBlock(lastProblem) ?? 'Письмо не ушло — код виден только локально.')
+      : 'Почтовый провайдер не настроен — код виден только локально.',
+  };
 }

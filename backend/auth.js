@@ -241,10 +241,14 @@ async function checkCode(user, submitted) {
 function fail(res, error) {
   const status = error.status ?? 500;
   if (status >= 500) console.error('Auth error:', error);
+  // error.expose — ошибка, текст которой написан для человека и не выдаёт
+  // ничего лишнего: например, «письмо с кодом не ушло».
+  const readable = status < 500 || error.expose === true;
   return res.status(status).json({
     code: error.code ?? 'server_error',
-    message: status >= 500 ? 'Something went wrong. Try again.' : error.message,
+    message: readable ? error.message : 'Something went wrong. Try again.',
     ...(error.retryAfter ? { retryAfter: error.retryAfter } : {}),
+    ...(error.field ? { field: error.field } : {}),
   });
 }
 
@@ -315,9 +319,19 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
         phone: cleanPhone,
       });
 
-      const result = await issueCode(user, {
-        intro: 'Введите код ниже, чтобы подтвердить почту и активировать аккаунт.',
-      });
+      let result;
+      try {
+        result = await issueCode(user, {
+          intro: 'Введите код ниже, чтобы подтвердить почту и активировать аккаунт.',
+        });
+      } catch (error) {
+        // Письмо не ушло — аккаунт останется неподтверждённым и человек
+        // сможет запросить код позже, когда почта заработает.
+        if (error.code === 'email_delivery_failed') {
+          error.field = 'email';
+        }
+        throw error;
+      }
 
       return res.status(201).json({ status: 'verification_sent', email: user.email, ...result });
     } catch (error) {
@@ -402,8 +416,11 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
             intro: 'Confirm your email address to finish signing in.',
           });
         } catch (codeError) {
-          if (codeError.code !== 'cooldown') throw codeError;
-          sent = { retryAfter: codeError.retryAfter };
+          // Ни кулдаун, ни сбой почты не должны превращать вход в 502:
+          // человеку всё равно нужен экран подтверждения.
+          if (codeError.code === 'cooldown') sent = { retryAfter: codeError.retryAfter };
+          else if (codeError.code === 'email_delivery_failed') sent = { deliveryFailed: true };
+          else throw codeError;
         }
         return res.status(403).json({
           code: 'email_unverified',

@@ -33,8 +33,8 @@ export const useAuthStore = create((set, get) => ({
   screen: 'login',
   pendingEmail: null,
   pendingRole: 'client',
-  devCode: null, // приходит, только когда у бэкенда нет почтового провайдера
-  deliveryNote: null,
+  /* devCode здесь больше нет намеренно: сервер не отдаёт код по HTTP,
+     поэтому и хранить его негде. Единственный канал доставки — письмо. */
   resendAfter: 0,
   error: null,
   fieldErrors: {},
@@ -73,8 +73,6 @@ export const useAuthStore = create((set, get) => ({
       error: null,
       fieldErrors: {},
       pendingEmail: null,
-      devCode: null,
-      deliveryNote: null,
     }),
 
   setPendingRole: (pendingRole) => set({ pendingRole }),
@@ -101,8 +99,6 @@ export const useAuthStore = create((set, get) => ({
         // повторно регистрирует существующую почту с другой ролью, приедет
         // старая — и это правильный ответ, а не ошибка.
         pendingRole: result.role ?? role,
-        devCode: result.devCode ?? null,
-        deliveryNote: result.deliveryNote ?? null,
         resendAfter: result.resendAfterSeconds ?? 60,
         error: result.roleLocked
           ? 'У этой почты уже есть аккаунт с другой ролью. Роль сменить нельзя — мы отправили код для входа в существующий.'
@@ -139,8 +135,6 @@ export const useAuthStore = create((set, get) => ({
           pending: false,
           screen: 'verify',
           pendingEmail: error.payload?.email ?? input.email,
-          devCode: error.payload?.devCode ?? null,
-          deliveryNote: error.payload?.deliveryNote ?? null,
           resendAfter: error.payload?.resendAfterSeconds ?? error.retryAfter ?? 60,
           error: null,
         });
@@ -172,8 +166,6 @@ export const useAuthStore = create((set, get) => ({
         user: result.user,
         role: readRole(result.user),
         pendingEmail: null,
-        devCode: null,
-        deliveryNote: null,
       });
       return true;
     } catch (error) {
@@ -190,8 +182,6 @@ export const useAuthStore = create((set, get) => ({
       const result = await api.resendCode(email);
       set({
         pending: false,
-        devCode: result.devCode ?? null,
-        deliveryNote: result.deliveryNote ?? null,
         resendAfter: result.resendAfterSeconds ?? 60,
       });
     } catch (error) {
@@ -216,8 +206,6 @@ export const useAuthStore = create((set, get) => ({
       role: null,
       screen: 'login',
       pendingEmail: null,
-      devCode: null,
-      deliveryNote: null,
       error: null,
       fieldErrors: {},
       blockedMessage: null,

@@ -44,10 +44,15 @@ function normalise(email) {
   return EMAIL_RE.test(value) ? value : null;
 }
 
+/**
+ * Демо-режим живёт целиком в браузере: настоящей почты нет и защищать
+ * нечего. Раньше код показывался на экране — теперь не показывается нигде,
+ * поэтому здесь подходит любая последовательность из шести цифр. Так экран
+ * подтверждения остаётся в демонстрации, а секрет не светится.
+ */
 function issueCode(email) {
-  const code = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
-  codes.set(email, { code, expiresAt: Date.now() + CODE_TTL_MS, attempts: 0 });
-  return code;
+  codes.set(email, { code: null, expiresAt: Date.now() + CODE_TTL_MS, attempts: 0 });
+  return null;
 }
 
 function publicUser(user) {
@@ -94,10 +99,10 @@ export async function register({ email, password, fullName, phone, role }) {
     verified: false,
   });
 
+  issueCode(normalised);
   return settle({
     status: 'verification_sent',
     email: normalised,
-    devCode: issueCode(normalised),
     resendAfterSeconds: 20,
   });
 }
@@ -122,12 +127,12 @@ export async function verifyEmail({ email, code }) {
     });
   }
 
-  if (record.code !== code) {
+  // В демо-режиме подходит любая последовательность из шести цифр:
+  // настоящего письма нет, а показывать код на экране нельзя.
+  if (!/^\d{6}$/.test(String(code ?? ''))) {
     const left = MAX_ATTEMPTS - record.attempts;
     throw new DemoError(
-      left > 0
-        ? `Код неверный. Осталось попыток: ${left}.`
-        : 'Код неверный.',
+      left > 0 ? `Введите шесть цифр. Осталось попыток: ${left}.` : 'Код неверный.',
       { status: 401, code: 'invalid_code' }
     );
   }
@@ -145,9 +150,10 @@ export async function resendCode(email) {
   if (!user || user.verified) {
     return settle({ status: 'verification_sent', resendAfterSeconds: 20 });
   }
+  issueCode(normalised);
   return settle({
     status: 'verification_sent',
-    devCode: issueCode(normalised),
+    email: normalised,
     resendAfterSeconds: 20,
   });
 }
@@ -168,8 +174,7 @@ export async function login({ email, password }) {
       status: 403,
       code: 'email_unverified',
       payload: {
-        email: user.email,
-        devCode: issueCode(user.email),
+        email: (issueCode(user.email), user.email),
         resendAfterSeconds: 20,
       },
     });

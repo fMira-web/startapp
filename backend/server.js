@@ -4,7 +4,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import * as db from './db.js';
-import { EMAIL_MODE, EMAIL_DESCRIPTION } from './mailer.js';
+import { EMAIL_MODE, EMAIL_DESCRIPTION, MAIL_CONFIGURED, verifyMailTransport } from './mailer.js';
 import { registerAuthRoutes, requireAuth, ensureSuperAdmin, OWNER_EMAIL } from './auth.js';
 import { registerHubRoutes, SEED_DEVELOPERS } from './hub.js';
 import * as marketDb from './market-db.js';
@@ -75,6 +75,12 @@ const codeLimiter = rateLimit({
 // browser gives up.
 const storage = { ready: false, error: null };
 
+/**
+ * Состояние почты. Проверяется один раз при старте, чтобы про неверный
+ * пароль стало известно сразу, а не в момент первой регистрации.
+ */
+const mail = { configured: MAIL_CONFIGURED, ready: false, error: null };
+
 function requireStorage(_req, res, next) {
   if (storage.ready) return next();
   return res.status(503).json({
@@ -96,6 +102,12 @@ app.get('/health', (_req, res) => {
     env: NODE_ENV,
     storage: storage.ready ? db.DB_MODE : storage.error ? 'error' : 'connecting',
     storageError: storage.error,
+    email: {
+      mode: EMAIL_MODE,
+      configured: mail.configured,
+      ready: mail.ready,
+      error: mail.error,
+    },
     emailMode: EMAIL_MODE,
     timestamp: new Date().toISOString(),
   });
@@ -104,8 +116,10 @@ app.get('/health', (_req, res) => {
 /** Lets the UI describe the environment honestly (e.g. dev codes on screen). */
 app.get('/api/capabilities', (_req, res) => {
   res.json({
-    email: EMAIL_MODE !== 'dev' || !IS_PRODUCTION,
+    // «Можно ли вообще зарегистрироваться» — это про доставку письма.
+    email: mail.ready,
     emailMode: EMAIL_MODE,
+    emailError: mail.ready ? null : mail.error,
     storage: db.DB_MODE,
     market: { rotationDays: ROTATION_DAYS, ownerEmail: OWNER_EMAIL },
   });
@@ -181,17 +195,48 @@ async function start() {
     if (db.DB_MODE === 'memory') {
       console.warn('No DATABASE_URL — accounts live in memory and vanish on restart.');
     }
-    if (EMAIL_MODE === 'dev') {
-      console.warn('No email provider configured — codes are printed here and shown in the UI.');
+    if (!MAIL_CONFIGURED) {
+      console.warn('Почтовый провайдер не настроен — регистрация будет отвечать ошибкой.');
     }
     if (!process.env.JWT_SECRET) {
-      console.warn('No JWT_SECRET — a random one was generated; every restart signs everyone out.');
+      // Секретом подписывается сессия И хешируются коды подтверждения.
+      // Случайный секрет на каждый запуск означает, что при перезапуске
+      // сервера (в том числе автоматическом, из-за node --watch) любой
+      // выданный код мгновенно перестаёт подходить.
+      console.warn('———————————————————————————————————————————————');
+      console.warn('JWT_SECRET не задан. Секрет сгенерирован случайно, поэтому');
+      console.warn('каждый перезапуск сервера обнуляет сессии И делает недействительными');
+      console.warn('все выданные коды подтверждения. Задайте JWT_SECRET в backend/.env.');
+      console.warn('———————————————————————————————————————————————');
     }
     if (IS_PRODUCTION && ALLOWED_ORIGINS.length === 0) {
       console.warn('ALLOWED_ORIGINS is empty — every cross-origin browser request will be rejected.');
     }
     console.info(`CORS allowlist:  ${ALLOWED_ORIGINS.join(', ') || '(empty)'}`);
   });
+
+  // Почта проверяется параллельно с базой — она не блокирует запуск, но её
+  // состояние должно быть известно до первой регистрации.
+  verifyMailTransport()
+    .then((result) => {
+      mail.ready = result.ok;
+      mail.error = result.error;
+      if (result.ok) {
+        console.info(`Почта готова:    ${EMAIL_DESCRIPTION}`);
+      } else {
+        console.error('———————————————————————————————————————————————');
+        console.error('ПОЧТА НЕ РАБОТАЕТ — регистрация будет отклоняться.');
+        console.error(result.error);
+        console.error('Задайте в backend/.env: SMTP_HOST, SMTP_PORT, SMTP_USER,');
+        console.error('SMTP_PASS, SMTP_SECURE и MAIL_FROM — и перезапустите сервер.');
+        console.error('———————————————————————————————————————————————');
+      }
+    })
+    .catch((error) => {
+      mail.ready = false;
+      mail.error = error.message;
+      console.error('Проверка почты не удалась:', error.message);
+    });
 
   try {
     const { mode } = await db.initDb();

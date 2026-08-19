@@ -123,11 +123,13 @@ async function request(path, { method = 'POST', body, timeoutMs = 60000 } = {}) 
     clearTimeout(timer);
     if (error.name === 'AbortError') {
       throw new ApiError(
-        'The server is taking longer than usual — it may be waking up. Please try again.',
+        'Сервер не ответил вовремя. Если он только что запустился — подождите полминуты и повторите.',
         { code: 'timeout' }
       );
     }
-    throw new ApiError('Could not reach the server. Check your connection.', { code: 'network' });
+    throw new ApiError('Не удалось связаться с сервером. Проверьте подключение и что бэкенд запущен.', {
+      code: 'network',
+    });
   }
   clearTimeout(timer);
 
@@ -139,7 +141,7 @@ async function request(path, { method = 'POST', body, timeoutMs = 60000 } = {}) 
   }
 
   if (!response.ok) {
-    throw new ApiError(payload?.message ?? 'The server returned an error.', {
+    throw new ApiError(payload?.message ?? 'Сервер вернул ошибку.', {
       status: response.status,
       code: payload?.code ?? 'server_error',
       field: payload?.field ?? null,
@@ -158,7 +160,7 @@ async function request(path, { method = 'POST', body, timeoutMs = 60000 } = {}) 
 /**
  * Creates the account and emails a six-digit code to the address supplied.
  * @param {{ email: string, password: string, fullName?: string, phone?: string|null }} input
- * @returns {Promise<{ status: 'verification_sent', email: string, resendAfterSeconds: number, devCode?: string }>}
+ * @returns {Promise<{ status: 'verification_sent', email: string, resendAfterSeconds: number }>}
  */
 export function register(input) {
   if (DEMO_MODE) return demo.register(input);

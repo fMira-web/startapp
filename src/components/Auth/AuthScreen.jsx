@@ -305,8 +305,6 @@ export default function AuthScreen() {
   const error = useAuthStore((state) => state.error);
   const fieldErrors = useAuthStore((state) => state.fieldErrors);
   const pendingEmail = useAuthStore((state) => state.pendingEmail);
-  const devCode = useAuthStore((state) => state.devCode);
-  const deliveryNote = useAuthStore((state) => state.deliveryNote);
   const resendAfter = useAuthStore((state) => state.resendAfter);
 
   const doRegister = useAuthStore((state) => state.register);
@@ -464,8 +462,8 @@ export default function AuthScreen() {
       {DEMO_MODE && (
         <div className="border-b border-line bg-brand-tint">
           <p className="mx-auto w-full max-w-[1240px] px-5 py-2.5 text-center text-[0.8125rem] leading-relaxed text-brand sm:px-8">
-            Демо-режим — без сервера, базы и писем. Зарегистрируйтесь на любой адрес, код
-            появится прямо на экране.
+            Демо-режим — без сервера, базы и писем. Регистрируйтесь на любой адрес,
+            а на шаге подтверждения введите любые шесть цифр.
           </p>
         </div>
       )}
@@ -713,25 +711,13 @@ export default function AuthScreen() {
                   />
                 </div>
 
-                {/* Код — секрет получателя. Показывать его на экране можно
-                    только там, где письма заведомо не отправляются: демо без
-                    сервера и локальная разработка. В собранном бою этот блок
-                    не существует. */}
-                {devCode && (DEMO_MODE || import.meta.env.DEV) && (
-                  <div className="mt-4 rounded-control border border-line bg-surface-sunken px-4 py-3 text-center">
-                    <p className="text-xs leading-relaxed text-ink-muted">
-                      {DEMO_MODE
-                        ? 'Демо-режим — письма не отправляются.'
-                        : (deliveryNote ?? 'Локальный сервер без почты.')}
-                    </p>
-                    <p className="mt-2 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-ink-muted">
-                      Код для локальной проверки
-                    </p>
-                    <p className="tnum mt-1 text-[1.75rem] font-semibold tracking-[0.3em] text-brand">
-                      {devCode}
-                    </p>
-                  </div>
-                )}
+                {/* Код — секрет получателя и на экране не показывается
+                    никогда: иначе зарегистрироваться на чужой адрес сможет
+                    кто угодно. Единственный канал доставки — письмо. */}
+                <p className="mt-4 text-center text-xs leading-relaxed text-ink-muted">
+                  Письмо приходит в течение минуты. Если его нет — загляните в «Спам»
+                  и «Промоакции», а потом запросите код заново.
+                </p>
 
                 {error && (
                   <div className="mt-4">

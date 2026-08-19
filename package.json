@@ -11,7 +11,8 @@
     "api:install": "npm --prefix backend install --omit=dev",
     "start": "npm --prefix backend start",
     "check": "node check-frontend.mjs",
-    "smoke": "node backend/smoke.test.mjs"
+    "smoke": "node backend/smoke.test.mjs",
+    "mailtest": "node backend/mail.test.mjs"
   },
   "dependencies": {
     "framer-motion": "^12.0.0",

@@ -16,10 +16,15 @@ process.env.SMTP_HOST = '';
 process.env.SMTP_USER = '';
 process.env.SMTP_PASS = '';
 process.env.MAIL_FROM = '';
+// Провайдера в тесте нет, поэтому коды печатаются в консоль сервера и
+// складываются в lastDevCodes. По HTTP они не отдаются — это отдельно
+// проверяется ниже.
+process.env.ALLOW_DEV_EMAIL_CODES = '1';
 
 const BASE = `http://127.0.0.1:${process.env.PORT}`;
 
 await import('./server.js');
+const { lastDevCodes } = await import('./mailer.js');
 await new Promise((resolve) => setTimeout(resolve, 1200));
 
 let passed = 0;
@@ -67,13 +72,15 @@ function makeClient() {
 
 async function signUp(call, input) {
   const registered = await call('/api/auth/register', { method: 'POST', body: input });
-  const code = registered.body.devCode;
+  // Код берётся ровно оттуда, откуда его взял бы человек: из доставки.
+  // В ответе API его нет и быть не должно.
+  const code = lastDevCodes.get(input.email.toLowerCase());
   if (!code) throw new Error(`нет кода подтверждения для ${input.email}: ${JSON.stringify(registered.body)}`);
   const verified = await call('/api/auth/verify-email', {
     method: 'POST',
     body: { email: input.email, code },
   });
-  return { registered, verified, user: verified.body.user };
+  return { registered, verified, user: verified.body.user, code };
 }
 
 console.log('\n— инфраструктура —');
@@ -107,6 +114,21 @@ const owner = await signUp(ownerClient, {
 check('владелец зарегистрирован', owner.verified.status === 200);
 check('владелец — суперадмин', owner.user?.isAdmin === true && owner.user?.isOwner === true);
 check('роль владельца — заказчик', owner.user?.role === 'client');
+
+check(
+  'код не возвращается в ответе регистрации',
+  owner.registered.body.devCode === undefined && owner.registered.body.deliveryNote === undefined,
+  JSON.stringify(owner.registered.body)
+);
+check(
+  'код не возвращается при повторной отправке',
+  (await ownerClient('/api/auth/resend-code', { method: 'POST', body: { email: 'mmirazizf930@gmail.com' } }))
+    .body.devCode === undefined
+);
+check(
+  'в ответе нет ни одного поля с кодом',
+  !JSON.stringify(owner.registered.body).includes(owner.code)
+);
 
 const devClient = makeClient();
 const dev = await signUp(devClient, {

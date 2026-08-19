@@ -313,18 +313,16 @@ async function issueCode(user, { intro }) {
     expiresAt: new Date(Date.now() + CODE_TTL_MS),
   });
 
-  const delivery = await sendCodeEmail({
+  // Бросает, если письмо не ушло. Код существует в базе только хешем и
+  // наружу не отдаётся ни при каких настройках — единственный канал это письмо.
+  await sendCodeEmail({
     to: user.email,
     code,
     name: user.full_name,
     intro,
   });
 
-  return {
-    devCode: delivery.devCode ?? null,
-    deliveryNote: delivery.deliveryNote ?? null,
-    resendAfterSeconds: RESEND_COOLDOWN_SECONDS,
-  };
+  return { resendAfterSeconds: RESEND_COOLDOWN_SECONDS };
 }
 
 async function checkCode(user, submitted) {
@@ -367,7 +365,11 @@ async function checkCode(user, submitted) {
 
 function fail(res, error) {
   const status = error.status ?? 500;
-  if (status >= 500) console.error('Auth error:', error);
+  // Несработавшая почта — состояние настройки, а не падение: mailer уже
+  // напечатал внятную причину, второй стек трассировки только мешает.
+  if (status >= 500 && error.code !== 'email_delivery_failed') {
+    console.error('Auth error:', error);
+  }
   // error.expose — ошибка, текст которой написан для человека и не выдаёт
   // ничего лишнего: например, «письмо с кодом не ушло».
   const readable = status < 500 || error.expose === true;
@@ -478,7 +480,7 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
           });
         } catch (error) {
           if (error.code !== 'cooldown') throw error;
-          result = { devCode: null, resendAfterSeconds: error.retryAfter ?? RESEND_COOLDOWN_SECONDS };
+          result = { resendAfterSeconds: error.retryAfter ?? RESEND_COOLDOWN_SECONDS };
         }
         return res.status(200).json({
           status: 'verification_sent',
@@ -516,11 +518,15 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
           intro: 'Введите код ниже, чтобы подтвердить почту и активировать аккаунт.',
         });
       } catch (error) {
-        // Письмо не ушло — аккаунт останется неподтверждённым и человек
-        // сможет запросить код позже, когда почта заработает.
-        if (error.code === 'email_delivery_failed') {
-          error.field = 'email';
+        // Письмо не ушло — значит регистрации не было. Свежесозданную запись
+        // удаляем, иначе в базе копятся аккаунты с email_verified = false,
+        // на которые невозможно войти и невозможно зарегистрироваться заново.
+        try {
+          await db.deleteUser(user.id);
+        } catch (cleanupError) {
+          console.error('Не удалось откатить регистрацию:', cleanupError.message);
         }
+        if (error.code === 'email_delivery_failed') error.field = 'email';
         throw error;
       }
 
@@ -644,11 +650,19 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
             intro: 'Confirm your email address to finish signing in.',
           });
         } catch (codeError) {
-          // Ни кулдаун, ни сбой почты не должны превращать вход в 502:
-          // человеку всё равно нужен экран подтверждения.
-          if (codeError.code === 'cooldown') sent = { retryAfter: codeError.retryAfter };
-          else if (codeError.code === 'email_delivery_failed') sent = { deliveryFailed: true };
-          else throw codeError;
+          // Кулдаун — не ошибка: предыдущий код ещё жив, ведём на экран ввода.
+          if (codeError.code === 'cooldown') {
+            sent = { retryAfter: codeError.retryAfter };
+          } else if (codeError.code === 'email_delivery_failed') {
+            // А вот несработавшая почта — ошибка, и о ней надо сказать прямо,
+            // иначе человек будет ждать письмо, которого не будет.
+            return res.status(codeError.status ?? 502).json({
+              code: 'email_delivery_failed',
+              message: codeError.message,
+            });
+          } else {
+            throw codeError;
+          }
         }
         return res.status(403).json({
           code: 'email_unverified',

@@ -35,7 +35,19 @@ const SMTP_SECURE = (process.env.SMTP_SECURE ?? String(SMTP_PORT === 465)) === '
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 const SMTP_READY = Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS);
 
-export const EMAIL_MODE = resend ? 'resend' : SMTP_READY ? 'smtp' : 'dev';
+/**
+ * SMTP идёт первым, когда он настроен.
+ *
+ * Обычный почтовый ящик отправляет письмо любому получателю. У Resend без
+ * подтверждённого домена включён тестовый режим — письма принимаются только
+ * на адрес владельца ключа, и все остальные регистрации остаются без кода.
+ * Поэтому явно настроенный SMTP считается основным транспортом, а Resend —
+ * запасным. Переопределить порядок можно через MAIL_PRIMARY=resend.
+ */
+const MAIL_PRIMARY = (process.env.MAIL_PRIMARY ?? '').trim().toLowerCase();
+const PREFER_RESEND = MAIL_PRIMARY === 'resend' || !SMTP_READY;
+
+export const EMAIL_MODE = SMTP_READY && !PREFER_RESEND ? 'smtp' : resend ? 'resend' : SMTP_READY ? 'smtp' : 'dev';
 export const EMAIL_DESCRIPTION =
   EMAIL_MODE === 'smtp' ? `smtp via ${SMTP_HOST}:${SMTP_PORT}` : EMAIL_MODE;
 
@@ -143,6 +155,18 @@ export async function sendCodeEmail({ to, code, name, intro }) {
 
   let lastProblem = null;
 
+  // Основной транспорт — тот, что доставит письмо кому угодно.
+  if (SMTP_READY && !PREFER_RESEND) {
+    try {
+      const transport = await getSmtpTransport();
+      await transport.sendMail({ ...payload, to });
+      return {};
+    } catch (error) {
+      lastProblem = error;
+      console.error(`[mail] smtp не доставил письмо на ${to}:`, error?.message ?? error);
+    }
+  }
+
   if (resend) {
     try {
       const { error } = await resend.emails.send({ ...payload, to: [to] });
@@ -156,9 +180,8 @@ export async function sendCodeEmail({ to, code, name, intro }) {
     }
   }
 
-  // Если рядом настроен обычный почтовый ящик — пробуем через него.
-  // Для SMTP нет «тестового режима», письмо уходит любому получателю.
-  if (SMTP_READY) {
+  // Запасной заход через почтовый ящик, если основным был Resend.
+  if (SMTP_READY && PREFER_RESEND) {
     try {
       const transport = await getSmtpTransport();
       await transport.sendMail({

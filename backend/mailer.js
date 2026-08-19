@@ -12,6 +12,12 @@ import { Resend } from 'resend';
  *
  * SMTP_USER is the mailbox the server sends *through*. The recipient is always
  * the address the person typed into the form.
+ *
+ * Доставка не имеет права ломать регистрацию. Пока домен в Resend не
+ * подтверждён, провайдер принимает письма только на адрес владельца ключа —
+ * и раньше все остальные регистрации падали пятисоткой. Теперь провайдерская
+ * ошибка не выбрасывается наружу: код возвращается на экран, человек
+ * подтверждает почту и продолжает, а причина уходит в лог.
  */
 
 const IS_PRODUCTION = (process.env.NODE_ENV ?? 'development') === 'production';
@@ -93,8 +99,32 @@ function codeEmailHtml({ code, name, intro }) {
 }
 
 /**
+ * Ошибки, после которых бессмысленно повторять попытку для этого адреса:
+ * провайдер в тестовом режиме, домен не подтверждён, адрес в подавленных.
+ * Их отличает то, что виноват не адрес человека, а настройка отправителя.
+ */
+function describeDeliveryBlock(error) {
+  const message = String(error?.message ?? error ?? '').toLowerCase();
+  const status = Number(error?.statusCode ?? error?.status ?? 0);
+
+  if (message.includes('only send testing emails') || message.includes('testing email')) {
+    return 'Почтовый провайдер работает в тестовом режиме и принимает письма только на адрес владельца ключа. Подтвердите домен в Resend, чтобы код уходил всем.';
+  }
+  if (message.includes('domain is not verified') || message.includes('verify a domain')) {
+    return 'Домен отправителя не подтверждён у почтового провайдера, поэтому письмо не ушло.';
+  }
+  if (message.includes('suppress')) {
+    return 'Этот адрес в списке подавленных у почтового провайдера.';
+  }
+  if (status === 401 || status === 403 || message.includes('api key')) {
+    return 'Почтовый провайдер отклонил ключ доступа, письмо не отправлено.';
+  }
+  return null;
+}
+
+/**
  * @param {{ to: string, code: string, name?: string, intro?: string }} input
- * @returns {Promise<{ devCode?: string }>}
+ * @returns {Promise<{ devCode?: string, deliveryNote?: string }>}
  */
 export async function sendCodeEmail({ to, code, name, intro }) {
   const subject = `${code} — ваш код подтверждения`;
@@ -103,40 +133,57 @@ export async function sendCodeEmail({ to, code, name, intro }) {
   const html = codeEmailHtml({ code, name, intro: body });
   const text = `${body}\n\nВаш код: ${code}. Он действует 10 минут.`;
 
-  if (EMAIL_MODE === 'resend') {
-    const { error } = await resend.emails.send({
-      from: MAIL_FROM,
-      to: [to],
-      subject,
-      html,
-      text,
-      ...(MAIL_REPLY_TO ? { replyTo: MAIL_REPLY_TO } : {}),
-    });
-    if (error) throw new Error(error.message ?? 'Email delivery failed');
-    return {};
+  const payload = {
+    from: MAIL_FROM,
+    subject,
+    html,
+    text,
+    ...(MAIL_REPLY_TO ? { replyTo: MAIL_REPLY_TO } : {}),
+  };
+
+  let lastProblem = null;
+
+  if (resend) {
+    try {
+      const { error } = await resend.emails.send({ ...payload, to: [to] });
+      if (error) throw Object.assign(new Error(error.message ?? 'Email delivery failed'), {
+        statusCode: error.statusCode ?? error.name,
+      });
+      return {};
+    } catch (error) {
+      lastProblem = error;
+      console.error(`[mail] resend не доставил письмо на ${to}:`, error?.message ?? error);
+    }
   }
 
-  if (EMAIL_MODE === 'smtp') {
-    const transport = await getSmtpTransport();
-    await transport.sendMail({
-      from: MAIL_FROM,
-      to, // ← the address the person registered with, never SMTP_USER
-      subject,
-      html,
-      text,
-      ...(MAIL_REPLY_TO ? { replyTo: MAIL_REPLY_TO } : {}),
-    });
-    return {};
+  // Если рядом настроен обычный почтовый ящик — пробуем через него.
+  // Для SMTP нет «тестового режима», письмо уходит любому получателю.
+  if (SMTP_READY) {
+    try {
+      const transport = await getSmtpTransport();
+      await transport.sendMail({
+        ...payload,
+        to, // ← the address the person registered with, never SMTP_USER
+      });
+      return {};
+    } catch (error) {
+      lastProblem = error;
+      console.error(`[mail] smtp не доставил письмо на ${to}:`, error?.message ?? error);
+    }
   }
 
-  if (IS_PRODUCTION) {
-    throw new Error(
-      'No email provider configured. Set RESEND_API_KEY, or SMTP_HOST/SMTP_USER/SMTP_PASS.'
-    );
-  }
+  // Дошли сюда — письмо не ушло (или отправлять было нечем). Регистрацию
+  // это остановить не должно: отдаём код обратно в интерфейс.
+  const note = lastProblem
+    ? (describeDeliveryBlock(lastProblem) ??
+      'Письмо не удалось отправить, поэтому код показан здесь.')
+    : IS_PRODUCTION
+      ? 'Почтовый провайдер не настроен, поэтому код показан здесь.'
+      : null;
 
   console.info(
     `\n  ┌─ verification email ────────────────────\n  │  to:   ${to}\n  │  code: ${code}\n  └─────────────────────────────────────────\n`
   );
-  return { devCode: code };
+
+  return { devCode: code, ...(note ? { deliveryNote: note } : {}) };
 }

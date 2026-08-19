@@ -190,6 +190,7 @@ export default function AuthScreen() {
   const fieldErrors = useAuthStore((state) => state.fieldErrors);
   const pendingEmail = useAuthStore((state) => state.pendingEmail);
   const devCode = useAuthStore((state) => state.devCode);
+  const deliveryNote = useAuthStore((state) => state.deliveryNote);
   const resendAfter = useAuthStore((state) => state.resendAfter);
 
   const doRegister = useAuthStore((state) => state.register);
@@ -517,12 +518,22 @@ export default function AuthScreen() {
                 </div>
 
                 {devCode && (
-                  <p className="tnum mt-4 rounded-control border border-line bg-surface-sunken px-3 py-2 text-center text-xs text-ink-muted">
-                    {DEMO_MODE
-                      ? 'Демо-режим — письма не отправляются. Ваш код: '
-                      : 'На сервере не настроена почта — ваш код: '}
-                    {devCode}
-                  </p>
+                  <div className="mt-4 rounded-control border border-line bg-surface-sunken px-4 py-3 text-center">
+                    <p className="text-xs leading-relaxed text-ink-muted">
+                      {DEMO_MODE
+                        ? 'Демо-режим — письма не отправляются.'
+                        : (deliveryNote ?? 'На сервере не настроена почта.')}
+                    </p>
+                    <p className="mt-2 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-ink-muted">
+                      Ваш код
+                    </p>
+                    <p className="tnum mt-1 text-[1.75rem] font-semibold tracking-[0.3em] text-brand">
+                      {devCode}
+                    </p>
+                    <p className="mt-1.5 text-xs text-ink-muted">
+                      Введите его выше — регистрация продолжится как обычно.
+                    </p>
+                  </div>
                 )}
 
                 {error && (

@@ -193,7 +193,11 @@ async function issueCode(user, { intro }) {
     intro,
   });
 
-  return { devCode: delivery.devCode ?? null, resendAfterSeconds: RESEND_COOLDOWN_SECONDS };
+  return {
+    devCode: delivery.devCode ?? null,
+    deliveryNote: delivery.deliveryNote ?? null,
+    resendAfterSeconds: RESEND_COOLDOWN_SECONDS,
+  };
 }
 
 async function checkCode(user, submitted) {
@@ -286,9 +290,17 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
           });
         }
         // Registered but never verified: re-send rather than block.
-        const result = await issueCode(existing, {
-          intro: 'Введите код ниже, чтобы подтвердить почту и активировать аккаунт.',
-        });
+        // Кулдаун — тоже не повод показывать ошибку: предыдущий код ещё
+        // жив, человека просто ведём на экран ввода.
+        let result;
+        try {
+          result = await issueCode(existing, {
+            intro: 'Введите код ниже, чтобы подтвердить почту и активировать аккаунт.',
+          });
+        } catch (error) {
+          if (error.code !== 'cooldown') throw error;
+          result = { devCode: null, resendAfterSeconds: error.retryAfter ?? RESEND_COOLDOWN_SECONDS };
+        }
         return res.status(200).json({
           status: 'verification_sent',
           email: existing.email,
@@ -352,9 +364,9 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
         return res.json({ status: 'verification_sent', resendAfterSeconds: RESEND_COOLDOWN_SECONDS });
       }
       const result = await issueCode(user, {
-        intro: 'Here is a fresh code to confirm your email address.',
+        intro: 'Вот новый код для подтверждения вашей почты.',
       });
-      return res.json({ status: 'verification_sent', ...result });
+      return res.json({ status: 'verification_sent', email: user.email, ...result });
     } catch (error) {
       return fail(res, error);
     }

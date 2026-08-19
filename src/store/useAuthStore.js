@@ -58,6 +58,8 @@ export const useAuthStore = create((set, get) => ({
   pendingEmail: null,
   pendingRole: 'client',
   devCode: null, // only populated when the backend has no mail provider
+  /** Почему письмо не дошло — показываем рядом с кодом, а не прячем. */
+  deliveryNote: null,
   resendAfter: 0,
   error: null,
   fieldErrors: {},
@@ -84,7 +86,14 @@ export const useAuthStore = create((set, get) => ({
   showLogin: () => set({ screen: 'login', error: null, fieldErrors: {} }),
   showRegister: () => set({ screen: 'register', error: null, fieldErrors: {} }),
   backFromVerify: () =>
-    set({ screen: 'login', error: null, fieldErrors: {}, pendingEmail: null, devCode: null }),
+    set({
+      screen: 'login',
+      error: null,
+      fieldErrors: {},
+      pendingEmail: null,
+      devCode: null,
+      deliveryNote: null,
+    }),
 
   setPendingRole: (pendingRole) => set({ pendingRole }),
   /** Ручное переключение стороны — человек может быть и тем, и другим. */
@@ -111,6 +120,7 @@ export const useAuthStore = create((set, get) => ({
         pendingRole: role,
         role,
         devCode: result.devCode ?? null,
+        deliveryNote: result.deliveryNote ?? null,
         resendAfter: result.resendAfterSeconds ?? 60,
       });
       return true;
@@ -145,6 +155,7 @@ export const useAuthStore = create((set, get) => ({
           screen: 'verify',
           pendingEmail: error.payload?.email ?? input.email,
           devCode: error.payload?.devCode ?? null,
+          deliveryNote: error.payload?.deliveryNote ?? null,
           resendAfter: error.payload?.resendAfterSeconds ?? error.retryAfter ?? 60,
           error: null,
         });
@@ -175,6 +186,7 @@ export const useAuthStore = create((set, get) => ({
         role,
         pendingEmail: null,
         devCode: null,
+        deliveryNote: null,
       });
       return true;
     } catch (error) {
@@ -192,6 +204,7 @@ export const useAuthStore = create((set, get) => ({
       set({
         pending: false,
         devCode: result.devCode ?? null,
+        deliveryNote: result.deliveryNote ?? null,
         resendAfter: result.resendAfterSeconds ?? 60,
       });
     } catch (error) {
@@ -216,6 +229,7 @@ export const useAuthStore = create((set, get) => ({
       screen: 'login',
       pendingEmail: null,
       devCode: null,
+      deliveryNote: null,
       error: null,
       fieldErrors: {},
     });

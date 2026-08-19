@@ -365,11 +365,7 @@ async function checkCode(user, submitted) {
 
 function fail(res, error) {
   const status = error.status ?? 500;
-  // Несработавшая почта — состояние настройки, а не падение: mailer уже
-  // напечатал внятную причину, второй стек трассировки только мешает.
-  if (status >= 500 && error.code !== 'email_delivery_failed') {
-    console.error('Auth error:', error);
-  }
+  if (status >= 500) console.error('Auth error:', error);
   // error.expose — ошибка, текст которой написан для человека и не выдаёт
   // ничего лишнего: например, «письмо с кодом не ушло».
   const readable = status < 500 || error.expose === true;
@@ -378,6 +374,9 @@ function fail(res, error) {
     message: readable ? error.message : 'Something went wrong. Try again.',
     ...(error.retryAfter ? { retryAfter: error.retryAfter } : {}),
     ...(error.field ? { field: error.field } : {}),
+    // Техническая причина отказа почты — тому, кто настраивает сервер.
+    // В продакшене её не показываем: она называет логин отправителя.
+    ...(!IS_PRODUCTION && error.reason ? { detail: error.reason } : {}),
   });
 }
 
@@ -526,7 +525,9 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
         } catch (cleanupError) {
           console.error('Не удалось откатить регистрацию:', cleanupError.message);
         }
-        if (error.code === 'email_delivery_failed') error.field = 'email';
+        // Ошибку доставки НЕ вешаем на поле «email»: дело почти никогда не
+        // в адресе, а в настройке сервера. Под полем ввода такая подпись
+        // заставляет человека править правильно набранную почту.
         throw error;
       }
 

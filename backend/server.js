@@ -4,7 +4,13 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import * as db from './db.js';
-import { EMAIL_MODE, EMAIL_DESCRIPTION, MAIL_CONFIGURED, verifyMailTransport } from './mailer.js';
+import {
+  EMAIL_MODE,
+  EMAIL_DESCRIPTION,
+  MAIL_CONFIGURED,
+  inspectMailConfig,
+  verifyMailTransport,
+} from './mailer.js';
 import { registerAuthRoutes, requireAuth, ensureSuperAdmin, OWNER_EMAIL } from './auth.js';
 import { registerHubRoutes, SEED_DEVELOPERS } from './hub.js';
 import * as marketDb from './market-db.js';
@@ -227,8 +233,9 @@ async function start() {
         console.error('———————————————————————————————————————————————');
         console.error('ПОЧТА НЕ РАБОТАЕТ — регистрация будет отклоняться.');
         console.error(result.error);
-        console.error('Задайте в backend/.env: SMTP_HOST, SMTP_PORT, SMTP_USER,');
-        console.error('SMTP_PASS, SMTP_SECURE и MAIL_FROM — и перезапустите сервер.');
+        console.error('');
+        console.error('Проверить одной командой:');
+        console.error('  node backend/mail.check.mjs ваш@адрес.com');
         console.error('———————————————————————————————————————————————');
       }
     })

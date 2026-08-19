@@ -112,6 +112,18 @@ function withTimeout(promise, ms, label) {
  * Смысл — узнать про неверный пароль сразу, а не в момент, когда первый
  * человек нажмёт «Зарегистрироваться».
  */
+/** Заметная ошибка в настройке, которую видно ещё до попытки соединения. */
+export function inspectMailConfig() {
+  if (EMAIL_MODE !== 'smtp') return null;
+  if (IS_BREVO && SMTP_PASS.startsWith('xkeysib-')) {
+    return 'SMTP_PASS похож на API-ключ Brevo (xkeysib-…). Релею нужен SMTP-ключ (xsmtpsib-…) со страницы https://app.brevo.com/settings/keys/smtp';
+  }
+  if (SMTP_HOST.includes('gmail') && /\s/.test(SMTP_PASS.trim()) === false && SMTP_PASS.length !== 16) {
+    return 'Для Gmail в SMTP_PASS нужен 16-символьный пароль приложения с https://myaccount.google.com/apppasswords';
+  }
+  return null;
+}
+
 export async function verifyMailTransport() {
   if (EMAIL_MODE === 'none') {
     return {
@@ -124,6 +136,9 @@ export async function verifyMailTransport() {
   }
 
   if (EMAIL_MODE === 'smtp' || SMTP_READY) {
+    // Явную ошибку в настройке видно и без обращения к серверу.
+    const misconfigured = inspectMailConfig();
+    if (misconfigured) return { ok: false, mode: 'smtp', error: misconfigured };
     try {
       const transport = await getSmtpTransport();
       await withTimeout(transport.verify(), 15_000, 'проверка SMTP');
@@ -137,23 +152,43 @@ export async function verifyMailTransport() {
   return { ok: Boolean(resend), mode: 'resend', error: resend ? null : 'RESEND_API_KEY пуст.' };
 }
 
-/** Человеческое объяснение самых частых отказов SMTP. */
+const IS_BREVO = SMTP_HOST.includes('brevo');
+
+/**
+ * Человеческое объяснение самых частых отказов SMTP.
+ *
+ * Смысл в том, чтобы назвать конкретную кнопку, которую надо нажать, а не
+ * пересказать код ошибки. «535» ничего не говорит; «вы вставили API-ключ
+ * вместо SMTP-ключа» — говорит всё.
+ */
 function describeSmtpError(error) {
   const message = String(error?.message ?? error ?? '');
   const lower = message.toLowerCase();
   const code = String(error?.code ?? '');
 
   if (code === 'EAUTH' || lower.includes('535') || lower.includes('authentication')) {
-    return `Почтовый сервер отклонил логин или пароль (${SMTP_USER}). Для Brevo нужен SMTP-ключ из «SMTP & API», для Gmail — пароль приложения, а не пароль от аккаунта.`;
+    // Самая частая причина: у Brevo две разные страницы ключей, и API-ключ
+    // (xkeysib-…) внешне похож на SMTP-ключ (xsmtpsib-…), но релеем не
+    // принимается.
+    if (IS_BREVO && SMTP_PASS.startsWith('xkeysib-')) {
+      return 'В SMTP_PASS вставлен API-ключ Brevo (xkeysib-…), а релею нужен SMTP-ключ (xsmtpsib-…). Возьмите его на https://app.brevo.com/settings/keys/smtp — кнопка «Generate a new SMTP key».';
+    }
+    if (IS_BREVO) {
+      return `Brevo отклонил пару логин/пароль (${SMTP_USER}). Проверьте, что SMTP_PASS — это SMTP-ключ со страницы https://app.brevo.com/settings/keys/smtp (обычно начинается с xsmtpsib-), а не пароль от аккаунта и не API-ключ. Если ключ верный, аккаунт мог быть ещё не активирован для транзакционных писем — это видно в письме от Brevo.`;
+    }
+    return `Почтовый сервер отклонил логин или пароль (${SMTP_USER}). Для Gmail нужен пароль приложения, а не пароль от аккаунта.`;
+  }
+  if (IS_BREVO && (lower.includes('not activated') || lower.includes('account is not') || lower.includes('unrecognized'))) {
+    return 'Brevo не активировал аккаунт для транзакционных писем. Откройте https://app.brevo.com/senders/list — там будет либо кнопка активации, либо письмо с просьбой описать, для чего нужна рассылка.';
+  }
+  if (lower.includes('sender') || lower.includes('from address') || lower.includes('not verified')) {
+    return `Адрес отправителя ${MAIL_FROM} не подтверждён у провайдера. Добавьте и подтвердите его на https://app.brevo.com/senders/list, затем повторите.`;
   }
   if (code === 'ETIMEDOUT' || code === 'mail_timeout' || lower.includes('timed out')) {
     return `Не удалось достучаться до ${SMTP_HOST}:${SMTP_PORT} — порт закрыт или провайдер его блокирует. Попробуйте порт 587 (SMTP_SECURE=false).`;
   }
   if (code === 'ECONNREFUSED') return `${SMTP_HOST}:${SMTP_PORT} отказал в соединении.`;
   if (code === 'ENOTFOUND' || code === 'EDNS') return `Хост ${SMTP_HOST} не найден — проверьте SMTP_HOST.`;
-  if (lower.includes('sender') && lower.includes('not') ) {
-    return `Адрес отправителя ${MAIL_FROM} не подтверждён у провайдера. Подтвердите его в кабинете и повторите.`;
-  }
   return message || 'Неизвестная ошибка SMTP.';
 }
 
@@ -323,7 +358,7 @@ export async function sendCodeEmail({ to, code, name, intro }) {
 
   const error = new Error(
     MAIL_CONFIGURED
-      ? 'Не удалось отправить письмо с кодом. Проверьте адрес и попробуйте ещё раз через минуту.'
+      ? 'Почтовый сервер не принял письмо с кодом, поэтому регистрация не завершена. Обычно дело в настройках отправки, а не в вашем адресе — сообщите администратору площадки.'
       : 'Отправка писем на сервере не настроена, поэтому код выслать некуда. Сообщите администратору площадки.'
   );
   error.status = MAIL_CONFIGURED ? 502 : 503;

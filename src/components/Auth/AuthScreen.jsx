@@ -11,7 +11,7 @@ import PasswordField from './PasswordField';
 import PhoneField from '../Checkout/PhoneField';
 import OtpInput from '../Checkout/OtpInput';
 
-function ErrorSummary({ message, refObject }) {
+function ErrorSummary({ message, detail = null, refObject }) {
   if (!message) return null;
   return (
     <div
@@ -26,7 +26,14 @@ function ErrorSummary({ message, refObject }) {
         aria-hidden="true"
         className="mt-[0.2rem] shrink-0 text-danger"
       />
-      <p className="text-[0.8125rem] leading-relaxed text-danger">{message}</p>
+      <div className="min-w-0">
+        <p className="text-[0.8125rem] leading-relaxed text-danger">{message}</p>
+        {/* Техническая причина приезжает только с локального сервера —
+            тому, кто настраивает почту, она экономит поход в консоль. */}
+        {detail && (
+          <p className="mt-1.5 text-[0.75rem] leading-relaxed text-danger/80">{detail}</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -303,6 +310,7 @@ export default function AuthScreen() {
   const screen = useAuthStore((state) => state.screen);
   const pending = useAuthStore((state) => state.pending);
   const error = useAuthStore((state) => state.error);
+  const errorDetail = useAuthStore((state) => state.errorDetail);
   const fieldErrors = useAuthStore((state) => state.fieldErrors);
   const pendingEmail = useAuthStore((state) => state.pendingEmail);
   const resendAfter = useAuthStore((state) => state.resendAfter);
@@ -492,7 +500,7 @@ export default function AuthScreen() {
                     submitLogin();
                   }}
                 >
-                  <ErrorSummary message={error} refObject={summaryRef} />
+                  <ErrorSummary message={error} detail={errorDetail} refObject={summaryRef} />
 
                   <TextField
                     id="login-email"
@@ -577,7 +585,7 @@ export default function AuthScreen() {
                     submitRegister();
                   }}
                 >
-                  <ErrorSummary message={error} refObject={summaryRef} />
+                  <ErrorSummary message={error} detail={errorDetail} refObject={summaryRef} />
 
                   {stage === 'account' ? (
                     <>
@@ -721,7 +729,7 @@ export default function AuthScreen() {
 
                 {error && (
                   <div className="mt-4">
-                    <ErrorSummary message={error} refObject={summaryRef} />
+                    <ErrorSummary message={error} detail={errorDetail} refObject={summaryRef} />
                   </div>
                 )}
 

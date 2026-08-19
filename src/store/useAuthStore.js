@@ -41,6 +41,12 @@ export const useAuthStore = create((set, get) => ({
   pending: false,
   /** Аккаунт заблокирован администратором — показываем причину, а не «войдите». */
   blockedMessage: null,
+  /**
+   * Техническая причина отказа почты. Сервер присылает её только вне
+   * продакшена — она адресована тому, кто настраивает почту, и экономит
+   * поход в консоль.
+   */
+  errorDetail: null,
 
   /* --- старт ---------------------------------------------------------- */
 
@@ -77,7 +83,7 @@ export const useAuthStore = create((set, get) => ({
 
   setPendingRole: (pendingRole) => set({ pendingRole }),
 
-  clearErrors: () => set({ error: null, fieldErrors: {}, blockedMessage: null }),
+  clearErrors: () => set({ error: null, fieldErrors: {}, blockedMessage: null, errorDetail: null }),
   tickResend: () => set((state) => ({ resendAfter: Math.max(0, state.resendAfter - 1) })),
 
   /* --- действия -------------------------------------------------------- */
@@ -87,7 +93,7 @@ export const useAuthStore = create((set, get) => ({
    *           devProfile?: { sphere, level, stack, headline?, city?, rateHour? } }} input
    */
   async register(input) {
-    set({ pending: true, error: null, fieldErrors: {} });
+    set({ pending: true, error: null, fieldErrors: {}, errorDetail: null });
     try {
       const role = input.role === 'developer' ? 'developer' : 'client';
       const result = await api.register({ ...input, role });
@@ -110,6 +116,7 @@ export const useAuthStore = create((set, get) => ({
         pending: false,
         error: error.field ? null : error.message,
         fieldErrors: error.field ? { [error.field]: error.message } : {},
+        errorDetail: error.payload?.detail ?? null,
       });
       return false;
     }
@@ -148,6 +155,7 @@ export const useAuthStore = create((set, get) => ({
         pending: false,
         error: error.field ? null : error.message,
         fieldErrors: error.field ? { [error.field]: error.message } : {},
+        errorDetail: error.payload?.detail ?? null,
       });
       return false;
     }

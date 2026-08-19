@@ -333,6 +333,14 @@ async function callSoftFallback(realCall, demoCall) {
   }
 }
 
+/** Новая волна откликов: исполнители присылают свежие цены и сроки. */
+export async function refreshBids(projectId) {
+  return callSoftFallback(
+    () => request(`/api/hub/projects/${encodeURIComponent(projectId)}/refresh-bids`, { body: {} }),
+    () => demo.refreshBids(projectId)
+  );
+}
+
 /** Заказчик оценивает исполнителя после выплаты. */
 export async function rateDeveloper(projectId, input) {
   const payload = await callSoftFallback(

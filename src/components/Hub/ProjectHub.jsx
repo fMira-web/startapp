@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useMeta, useTemplate } from '../../store/useQuoteStore';
 import { useHubStore } from '../../store/useHubStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import { formatCurrency, formatAlternate, formatDateTime, pluralize } from '../../lib/format';
 import {
   PLATFORM_FEE_RATE,
@@ -25,6 +26,7 @@ import DeveloperBoard from './DeveloperBoard';
 import DealPanel from './DealPanel';
 import DeveloperProfile from './DeveloperProfile';
 import NewProjectForm from './NewProjectForm';
+import HubHero from './HubHero';
 
 function StatusPill({ status }) {
   const entry = PROJECT_STATUS[status] ?? PROJECT_STATUS.open;
@@ -398,16 +400,30 @@ export default function ProjectHub({ onBack }) {
   const pendingAction = useHubStore((state) => state.pendingAction);
   const viewer = useHubStore((state) => state.viewer);
   const actingDevId = useHubStore((state) => state.actingDevId);
-  const setViewer = useHubStore((state) => state.setViewer);
   const refresh = useHubStore((state) => state.refresh);
   const acceptBid = useHubStore((state) => state.acceptBid);
   const closeDeal = useHubStore((state) => state.closeDeal);
+  const refreshBids = useHubStore((state) => state.refreshBids);
+  const setViewer = useHubStore((state) => state.setViewer);
+  const accountRole = useAuthStore((state) => state.role);
 
   const [profileDev, setProfileDev] = useState(null);
+  const formRef = useRef(null);
+
+  const averageRating = useMemo(() => {
+    if (!developers.length) return 4.8;
+    const sum = developers.reduce((total, dev) => total + (Number(dev.rating) || 0), 0);
+    return Math.round((sum / developers.length) * 10) / 10;
+  }, [developers]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Роль выбрана при регистрации — доска сразу открывается нужной стороной.
+  useEffect(() => {
+    if (accountRole === 'client' || accountRole === 'developer') setViewer(accountRole);
+  }, [accountRole, setViewer]);
 
   const profileModal = (
     <DeveloperProfile developer={profileDev} onClose={() => setProfileDev(null)} />
@@ -425,30 +441,29 @@ export default function ProjectHub({ onBack }) {
           К предложению
         </button>
 
-        <motion.header
-          initial={reduce ? false : { opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-8"
-        >
-          <p className="label-caps">Центр проектов · {template.meta.studio.name}</p>
-          <h1 className="mt-3 text-[2rem] font-semibold leading-[1.08] tracking-[-0.03em] text-ink sm:text-[2.75rem]">
-            Опишите задачу — цену назовут исполнители
-          </h1>
-          <p className="measure mt-3 text-[1.0625rem] leading-relaxed text-ink-soft">
-            {developers.length} проверенных специалистов из Ташкента, Самарканда, Бухары и Ферганы.
-            Смета собирается под вашу задачу, деньги держит площадка до приёмки работы.
-          </p>
-        </motion.header>
+        <div className="mt-8">
+          <HubHero
+            developers={developers}
+            averageRating={averageRating}
+            onStart={() =>
+              formRef.current?.scrollIntoView({
+                behavior: reduce ? 'auto' : 'smooth',
+                block: 'start',
+              })
+            }
+          />
+        </div>
 
         {loading ? (
           <p className="mt-8 text-sm text-ink-muted">Загружаю доску…</p>
         ) : (
           <motion.div
+            ref={formRef}
+            id="new-task"
             initial={reduce ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-8"
+            className="mt-14 scroll-mt-24"
           >
             <NewProjectForm />
           </motion.div>
@@ -502,7 +517,7 @@ export default function ProjectHub({ onBack }) {
             ))}
           </div>
 
-          {isClient && (project.status === 'completed' || !deal) && (
+          {(project.status === 'completed' || project.status === 'archived' || !deal) && (
             <button
               type="button"
               onClick={closeDeal}
@@ -510,7 +525,7 @@ export default function ProjectHub({ onBack }) {
               className="flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 text-[0.8125rem] font-medium text-ink-soft transition-colors duration-150 hover:border-line-strong hover:text-ink disabled:opacity-45"
             >
               <Plus size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
-              Новая задача
+              {deal ? 'Выйти и создать новую' : 'Новая задача'}
             </button>
           )}
 
@@ -568,6 +583,27 @@ export default function ProjectHub({ onBack }) {
                   : 'Откликов пока нет'}
               </h2>
             </div>
+
+            {openForBids && (
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={refreshBids}
+                  disabled={pendingAction === 'rebid'}
+                  className="flex min-h-10 cursor-pointer items-center gap-2 rounded-control border border-line bg-surface px-4 text-[0.8125rem] font-semibold text-ink-soft transition-colors duration-200 hover:border-line-strong hover:text-ink disabled:opacity-45"
+                >
+                  {pendingAction === 'rebid' ? (
+                    <Loader2 size={ICON.xs} strokeWidth={STROKE.regular} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
+                  )}
+                  Запросить новые цены
+                </button>
+                <span className="text-xs text-ink-muted">
+                  Исполнители пересчитают предложение под вашу задачу.
+                </span>
+              </div>
+            )}
 
             {!isClient && openForBids && (
               <div className="mt-6">

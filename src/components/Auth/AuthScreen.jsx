@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { AlertCircle, ArrowLeft, FileText, Loader2, Lock } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Briefcase, Check, Code2, FileText, Loader2, Lock } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTemplate } from '../../store/useQuoteStore';
 import { isValidEmail, toE164, detectDefaultCountry } from '../../data/countries';
@@ -76,6 +76,84 @@ function TextField({
   );
 }
 
+/**
+ * Кто вы на площадке.
+ *
+ * Это первый вопрос регистрации, потому что от ответа зависит весь
+ * дальнейший интерфейс: заказчик публикует задачу, исполнитель ищет её.
+ */
+const ROLE_OPTIONS = [
+  {
+    id: 'client',
+    icon: Briefcase,
+    title: 'Я заказчик',
+    lead: 'Мне нужно, чтобы сделали',
+    points: ['Опишу задачу своими словами', 'Получу отклики с ценами', 'Плачу только после приёмки'],
+  },
+  {
+    id: 'developer',
+    icon: Code2,
+    title: 'Я исполнитель',
+    lead: 'Я разработчик, дизайнер, QA',
+    points: ['Вижу открытые задачи', 'Называю свою цену и срок', 'Деньги в резерве до сдачи'],
+  },
+];
+
+function RoleChoice({ value, onChange }) {
+  return (
+    <fieldset className="flex flex-col gap-2.5">
+      <legend className="text-sm font-medium text-ink-soft">Кто вы на площадке</legend>
+      <div className="mt-1 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        {ROLE_OPTIONS.map((option) => {
+          const active = value === option.id;
+          const Icon = option.icon;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(option.id)}
+              className={`relative flex cursor-pointer flex-col gap-2 rounded-card border p-4 text-left transition-all duration-200 ${
+                active
+                  ? 'border-brand bg-brand-tint ring-1 ring-brand/30'
+                  : 'border-line-strong bg-surface hover:border-brand/40'
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`flex h-9 w-9 items-center justify-center rounded-[10px] transition-colors duration-200 ${
+                  active ? 'bg-brand text-white' : 'bg-surface-sunken text-ink-muted'
+                }`}
+              >
+                <Icon size={ICON.sm} strokeWidth={STROKE.regular} />
+              </span>
+              <span>
+                <span className={`block text-[0.9375rem] font-semibold ${active ? 'text-brand' : 'text-ink'}`}>
+                  {option.title}
+                </span>
+                <span className="mt-0.5 block text-xs text-ink-muted">{option.lead}</span>
+              </span>
+              <ul className="mt-1 flex flex-col gap-1">
+                {option.points.map((point) => (
+                  <li key={point} className="flex items-start gap-1.5 text-xs leading-relaxed text-ink-muted">
+                    <Check
+                      size={12}
+                      strokeWidth={2.2}
+                      aria-hidden="true"
+                      className={`mt-[0.2rem] shrink-0 ${active ? 'text-brand' : 'text-line-strong'}`}
+                    />
+                    {point}
+                  </li>
+                ))}
+              </ul>
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
 function SubmitButton({ pending, children, pendingLabel, onClick, disabled }) {
   return (
     <button
@@ -123,6 +201,9 @@ export default function AuthScreen() {
   const backFromVerify = useAuthStore((state) => state.backFromVerify);
   const tickResend = useAuthStore((state) => state.tickResend);
 
+  const setPendingRole = useAuthStore((state) => state.setPendingRole);
+
+  const [role, setRole] = useState('client');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -169,6 +250,7 @@ export default function AuthScreen() {
       password,
       fullName: fullName.trim() || undefined,
       phone,
+      role,
     });
     if (ok) {
       setCode('');
@@ -233,7 +315,7 @@ export default function AuthScreen() {
             {/* ---------------------------------------------- sign in --- */}
             {screen === 'login' && (
               <motion.section key="login" {...motionProps} aria-labelledby="auth-heading">
-                <p className="label-caps">Доступ клиента</p>
+                <p className="label-caps">Центр проектов</p>
                 <h1
                   id="auth-heading"
                   className="mt-3 text-[1.75rem] font-semibold tracking-[-0.025em] text-ink"
@@ -241,7 +323,7 @@ export default function AuthScreen() {
                   Вход
                 </h1>
                 <p className="mt-2 text-[0.9375rem] leading-relaxed text-ink-muted">
-                  Предложение приватное. Войдите, чтобы открыть его и собрать свою конфигурацию.
+                  Заказчики публикуют задачи, исполнители называют цену. Войдите, чтобы продолжить.
                 </p>
 
                 <form
@@ -299,7 +381,7 @@ export default function AuthScreen() {
             {/* --------------------------------------------- register --- */}
             {screen === 'register' && (
               <motion.section key="register" {...motionProps} aria-labelledby="auth-heading">
-                <p className="label-caps">Доступ клиента</p>
+                <p className="label-caps">Шаг 1 из 2</p>
                 <h1
                   id="auth-heading"
                   className="mt-3 text-[1.75rem] font-semibold tracking-[-0.025em] text-ink"
@@ -307,7 +389,10 @@ export default function AuthScreen() {
                   Создайте аккаунт
                 </h1>
                 <p className="mt-2 text-[0.9375rem] leading-relaxed text-ink-muted">
-                  Мы отправим шестизначный код на почту — до подтверждения никакие данные не откроются.
+                  {role === 'developer'
+                    ? 'Профиль исполнителя: задачи, отклики и выплаты после приёмки.'
+                    : 'Аккаунт заказчика: задача, отклики с ценами и оплата после приёмки.'}{' '}
+                  Мы отправим шестизначный код на почту.
                 </p>
 
                 <form
@@ -318,6 +403,14 @@ export default function AuthScreen() {
                   }}
                 >
                   <ErrorSummary message={error} refObject={summaryRef} />
+
+                  <RoleChoice
+                    value={role}
+                    onChange={(next) => {
+                      setRole(next);
+                      setPendingRole(next);
+                    }}
+                  />
 
                   <TextField
                     id="register-name"
@@ -371,7 +464,7 @@ export default function AuthScreen() {
                   />
 
                   <SubmitButton pending={pending} pendingLabel="Создаю аккаунт">
-                    Создать аккаунт
+                    {role === 'developer' ? 'Создать профиль исполнителя' : 'Создать аккаунт заказчика'}
                   </SubmitButton>
                 </form>
 

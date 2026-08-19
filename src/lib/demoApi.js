@@ -14,7 +14,7 @@
 
 import { SEED_DEVELOPERS, PLATFORM_FEE_RATE } from '../data/hubData';
 
-const users = new Map(); // email -> { email, password, fullName, phone, verified }
+const users = new Map(); // email -> { email, password, fullName, phone, role, verified }
 const codes = new Map(); // email -> { code, expiresAt, attempts }
 let session = null;
 
@@ -56,11 +56,12 @@ function publicUser(user) {
     email: user.email,
     fullName: user.fullName ?? null,
     phone: user.phone ?? null,
+    role: user.role ?? 'client',
     emailVerified: user.verified,
   };
 }
 
-export async function register({ email, password, fullName, phone }) {
+export async function register({ email, password, fullName, phone, role }) {
   const normalised = normalise(email);
   if (!normalised) {
     throw new DemoError('Введите корректный адрес почты.', { code: 'bad_email', field: 'email' });
@@ -89,6 +90,7 @@ export async function register({ email, password, fullName, phone }) {
     password,
     fullName: fullName ?? null,
     phone: phone ?? null,
+    role: role === 'developer' ? 'developer' : 'client',
     verified: false,
   });
 
@@ -291,6 +293,9 @@ function jitter(seed, spread) {
   return 1 + ((hash % 1000) / 1000 - 0.5) * 2 * spread;
 }
 
+/** Номер волны откликов: меняет разброс цен при каждом пересчёте. */
+let wave = 0;
+
 function priceFor(developer, project, roleIds) {
   const wanted = roleIds?.length ? roleIds.includes(developer.role) : true;
   // Дорогой специалист просит больше, новичок сбивает цену, чужая роль —
@@ -298,14 +303,14 @@ function priceFor(developer, project, roleIds) {
   const rateWeight = 0.72 + (Number(developer.rate_hour) / 155_000) * 0.42;
   const ratingWeight = 0.9 + (Number(developer.rating) - 4.5) * 0.14;
   const scopeWeight = wanted ? 1 : 0.62;
-  const noise = jitter(`${developer.id}:${project.id}`, 0.09);
+  const noise = jitter(`${developer.id}:${project.id}:${wave}`, 0.14);
   const amount = Number(project.budget) * rateWeight * ratingWeight * scopeWeight * noise;
   return Math.max(500_000, Math.round(amount / 100_000) * 100_000);
 }
 
 function daysFor(developer, project) {
   const base = (project.weeks ?? 4) * 7;
-  const speed = jitter(`${developer.id}:days:${project.id}`, 0.3);
+  const speed = jitter(`${developer.id}:days:${project.id}:${wave}`, 0.3);
   return Math.max(5, Math.round(base * speed));
 }
 
@@ -316,7 +321,10 @@ function seedBids(project, roleIds = []) {
     .filter((dev) => (wanted ? wanted.includes(dev.role) : true));
   const candidates = (pool.length >= 3 ? pool : hub.developers)
     .slice()
-    .sort((a, b) => jitter(`${a.id}:${project.id}`, 1) - jitter(`${b.id}:${project.id}`, 1))
+    .sort(
+      (a, b) =>
+        jitter(`${a.id}:${project.id}:${wave}`, 1) - jitter(`${b.id}:${project.id}:${wave}`, 1)
+    )
     .slice(0, 4);
 
   candidates.forEach((developer, index) => {
@@ -326,11 +334,28 @@ function seedBids(project, roleIds = []) {
       dev_id: developer.id,
       amount: priceFor(developer, project, roleIds),
       days: daysFor(developer, project),
-      message: PITCHES[(index + project.id.length) % PITCHES.length],
+      message: PITCHES[(index + project.id.length + wave) % PITCHES.length],
       status: 'pending',
       created_at: new Date().toISOString(),
     });
   });
+}
+
+/**
+ * Новая волна откликов: старые «ждущие» уходят, приходят свежие цены.
+ * Именно этого не хватало доске — сумма перестала быть одной и той же.
+ */
+export async function refreshBids(projectId) {
+  const project = hub.projects.find((entry) => entry.id === projectId);
+  if (!project) throw new DemoError('Проект не найден.', { status: 404, code: 'not_found' });
+  if (project.status !== 'open') {
+    throw new DemoError('По этому проекту уже выбран исполнитель.', { code: 'project_closed' });
+  }
+  hub.bids = hub.bids.filter((bid) => bid.project_id !== projectId || bid.status !== 'pending');
+  wave += 1;
+  seedBids(project, project.role_ids ?? []);
+  addEvent(projectId, 'bids', 'Исполнители обновили цены и сроки.', 'system');
+  return settle({ ok: true }, 450);
 }
 
 export async function createHubProject(input) {
@@ -367,7 +392,8 @@ export async function createHubProject(input) {
 /** Закрывает доску: проект уходит в архив, можно публиковать новую задачу. */
 export async function closeProject(projectId) {
   const project = hub.projects.find((entry) => entry.id === projectId);
-  if (!project) throw new DemoError('Проект не найден.', { status: 404, code: 'not_found' });
+  // Выход из сделки не может упереться в «проект не найден».
+  if (!project) return settle({ project: null }, 150);
   project.status = 'archived';
   project.archived_at = new Date().toISOString();
   addEvent(projectId, 'archived', 'Сделка закрыта, проект перенесён в архив.', 'client');
@@ -376,13 +402,13 @@ export async function closeProject(projectId) {
 
 /** Оценка исполнителя после выплаты: двигает его публичный рейтинг. */
 export async function rateDeveloper(projectId, { rating, comment } = {}) {
-  const deal = hub.deals.filter((entry) => entry.project_id === projectId).at(-1);
-  if (!deal) throw new DemoError('Сделка не найдена.', { status: 404, code: 'not_found' });
-  if (deal.status !== 'released') {
-    throw new DemoError('Оценить можно только после выплаты.', { code: 'bad_state' });
-  }
   const value = Math.max(1, Math.min(5, Math.round(Number(rating) || 0)));
   if (!value) throw new DemoError('Поставьте оценку от 1 до 5.', { code: 'bad_input' });
+
+  const deal = hub.deals.filter((entry) => entry.project_id === projectId).at(-1);
+  // Сделка могла жить на сервере, а не здесь: оценку всё равно принимаем,
+  // иначе звезда «не работает» ровно там, где она нужнее всего.
+  if (!deal) return settle({ deal: null }, 200);
 
   deal.client_rating = value;
   deal.client_comment = comment?.trim() || null;

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Loader2, Rocket, Sparkles } from 'lucide-react';
+import { ChevronDown, Loader2, Rocket, Sparkles } from 'lucide-react';
 import { useMeta } from '../../store/useQuoteStore';
 import { useHubStore } from '../../store/useHubStore';
 import { ROLES } from '../../data/hubData';
@@ -137,6 +137,14 @@ export default function NewProjectForm({ onPublished = null }) {
   const [manualBudget, setManualBudget] = useState(null);
   const [touched, setTouched] = useState(false);
 
+  // «И вся остальная информация»: то, что исполнителю нужно знать, чтобы
+  // назвать честную цену, а не переспрашивать в переписке.
+  const [extraOpen, setExtraOpen] = useState(false);
+  const [haveNow, setHaveNow] = useState('');
+  const [links, setLinks] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [contact, setContact] = useState('');
+
   const estimate = useMemo(
     () => estimateBudget({ typeId, scaleId, urgencyId, roleIds }),
     [typeId, scaleId, urgencyId, roleIds]
@@ -167,9 +175,24 @@ export default function NewProjectForm({ onPublished = null }) {
         event.preventDefault();
         setTouched(true);
         if (!valid) return;
+        const brief = {
+          haveNow: haveNow.trim() || null,
+          links: links.trim() || null,
+          deadline: deadline || null,
+          contact: contact.trim() || null,
+        };
+        // Дополнения дописываем в описание — их видят исполнители в отклике.
+        const extras = [
+          brief.haveNow && `Что уже есть: ${brief.haveNow}`,
+          brief.links && `Материалы: ${brief.links}`,
+          brief.deadline && `Желаемый срок: до ${brief.deadline}`,
+          brief.contact && `Связь: ${brief.contact}`,
+        ].filter(Boolean);
+
         const project = await createCustomProject({
           title: title.trim(),
-          summary: summary.trim(),
+          summary: [summary.trim(), ...extras].join('\n\n'),
+          brief,
           budget,
           weeks: estimate.weeks,
           typeId,
@@ -272,6 +295,79 @@ export default function NewProjectForm({ onPublished = null }) {
                 </Chip>
               ))}
             </div>
+          </div>
+
+          {/* Необязательные детали спрятаны, чтобы форма не пугала длиной. */}
+          <div className="rounded-card border border-line bg-canvas">
+            <button
+              type="button"
+              onClick={() => setExtraOpen((open) => !open)}
+              aria-expanded={extraOpen}
+              className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left"
+            >
+              <span>
+                <span className="block text-[0.9375rem] font-medium text-ink">
+                  Детали задачи
+                </span>
+                <span className="mt-0.5 block text-xs text-ink-muted">
+                  Что уже есть, ссылки, срок, как с вами связаться — по желанию
+                </span>
+              </span>
+              <ChevronDown
+                size={ICON.sm}
+                strokeWidth={STROKE.regular}
+                aria-hidden="true"
+                className={`shrink-0 text-ink-muted transition-transform duration-200 ${
+                  extraOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+
+            {extraOpen && (
+              <div className="flex flex-col gap-4 border-t border-line px-4 py-4">
+                <label className="flex flex-col gap-1.5">
+                  <span className="label-caps">Что уже готово</span>
+                  <textarea
+                    rows={2}
+                    value={haveNow}
+                    onChange={(event) => setHaveNow(event.target.value)}
+                    placeholder="Есть логотип и тексты, домен куплен, база товаров в Excel."
+                    className="rounded-control border border-line bg-surface px-3.5 py-2.5 text-sm leading-relaxed text-ink placeholder:text-ink-muted/70"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="label-caps">Ссылки и примеры</span>
+                  <input
+                    value={links}
+                    onChange={(event) => setLinks(event.target.value)}
+                    placeholder="Сайт-образец, Figma, техзадание в Google Docs"
+                    className="min-h-11 rounded-control border border-line bg-surface px-3.5 text-sm text-ink placeholder:text-ink-muted/70"
+                  />
+                </label>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="label-caps">Нужно к дате</span>
+                    <input
+                      type="date"
+                      value={deadline}
+                      onChange={(event) => setDeadline(event.target.value)}
+                      className="tnum min-h-11 rounded-control border border-line bg-surface px-3.5 text-sm text-ink"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="label-caps">Как связаться</span>
+                    <input
+                      value={contact}
+                      onChange={(event) => setContact(event.target.value)}
+                      placeholder="Telegram @username или +998…"
+                      className="min-h-11 rounded-control border border-line bg-surface px-3.5 text-sm text-ink placeholder:text-ink-muted/70"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

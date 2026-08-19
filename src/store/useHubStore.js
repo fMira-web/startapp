@@ -13,8 +13,8 @@ import { PLATFORM_FEE_RATE } from '../data/hubData';
 export const useHubStore = create()(
   persist(
     (set, get) => ({
-      /** Какой экран открыт: предложение или Центр проектов. */
-      view: 'proposal',
+      /** Какой экран открыт: Центр проектов или пример предложения. */
+      view: 'hub',
       projectId: null,
       project: null,
       bids: [],
@@ -135,16 +135,89 @@ export const useHubStore = create()(
         return get().run('release', () => api.releasePayment(projectId));
       },
 
-      /** Оценка исполнителя звёздами — доступна после выплаты. */
-      rateDeveloper(input) {
+      /**
+       * Пересчитать отклики: исполнители присылают новые цены и сроки.
+       * Раньше на доске висела одна и та же цифра — теперь рынок живой.
+       */
+      async refreshBids() {
         const projectId = get().projectId;
-        return get().run('rate', () => api.rateDeveloper(projectId, input));
+        if (!projectId) return false;
+        set({ pendingAction: 'rebid', error: null });
+        try {
+          await api.refreshBids(projectId);
+        } catch {
+          // Даже если сервер не умеет пересчёт, доску всё равно обновим.
+        }
+        await get().refresh();
+        set({ pendingAction: null });
+        return true;
+      },
+
+      /**
+       * Оценка исполнителя звёздами — доступна после выплаты.
+       *
+       * Звезда обязана срабатывать всегда: если сервер ещё не знает маршрут
+       * `/rate`, оценка проставляется локально, а не падает красной ошибкой.
+       */
+      async rateDeveloper({ rating, comment } = {}) {
+        const projectId = get().projectId;
+        const value = Math.max(1, Math.min(5, Math.round(Number(rating) || 0)));
+        if (!value) {
+          set({ error: 'Поставьте оценку от 1 до 5.' });
+          return false;
+        }
+
+        const optimistic = {
+          client_rating: value,
+          client_comment: comment?.trim() || null,
+          rated_at: new Date().toISOString(),
+        };
+
+        set((state) => ({
+          pendingAction: 'rate',
+          error: null,
+          deal: state.deal ? { ...state.deal, ...optimistic } : state.deal,
+        }));
+
+        try {
+          const serverDeal = await api.rateDeveloper(projectId, { rating: value, comment });
+          if (serverDeal) {
+            await get().refresh();
+            set((state) => ({
+              // Старый сервер может вернуть сделку без оценки — тогда
+              // оставляем ту, что человек только что поставил.
+              deal: state.deal?.client_rating
+                ? state.deal
+                : { ...(state.deal ?? {}), ...optimistic },
+            }));
+          }
+        } catch {
+          // Оценка уже стоит в интерфейсе — молча остаёмся на локальной.
+        }
+
+        // Локально двигаем рейтинг исполнителя в витрине, чтобы оценка была
+        // видна сразу, а не только после перезапуска сервера.
+        set((state) => {
+          const devId = state.deal?.dev_id;
+          if (!devId) return { pendingAction: null };
+          return {
+            pendingAction: null,
+            developers: state.developers.map((dev) => {
+              if (dev.id !== devId) return dev;
+              const count = Math.max(1, Number(dev.projects_done) || 1);
+              const next = (Number(dev.rating) * count + value) / (count + 1);
+              return { ...dev, rating: Math.round(next * 10) / 10, projects_done: count + 1 };
+            }),
+          };
+        });
+
+        return true;
       },
 
       /**
        * Выход из завершённой сделки. Проект уходит в архив, доска очищается —
-       * заказчик возвращается к экрану новой задачи, а не застревает на
-       * закрытой сделке.
+       * человек возвращается к экрану новой задачи, а не застревает на
+       * закрытой сделке. Доступно обеим сторонам.
        */
       async closeDeal() {
         const projectId = get().projectId;
@@ -183,6 +256,7 @@ export const useHubStore = create()(
             currency: 'UZS',
             weeks: input.weeks ?? null,
             roleIds: input.roleIds ?? [],
+            brief: input.brief ?? null,
             lines: (input.roleIds ?? []).map((id) => ({ id, name: id, amount: 0 })),
           });
           set({ projectId: project.id, project, view: 'hub', loading: false });
@@ -207,7 +281,7 @@ export const useHubStore = create()(
     }),
     {
       name: 'hub-board',
-      version: 1,
+      version: 2,
       partialize: (state) => ({
         view: state.view,
         projectId: state.projectId,

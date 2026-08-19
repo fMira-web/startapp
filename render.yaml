@@ -30,6 +30,18 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
+      # Почта владельца площадки — этот аккаунт становится суперадмином.
+      - key: OWNER_EMAIL
+        sync: false
+
+      # Ротация предложений главной страницы: 2 или 3 дня.
+      - key: OFFER_ROTATION_DAYS
+        value: "3"
+
+      # Комиссия площадки с суммы сделки.
+      - key: PLATFORM_FEE_RATE
+        value: "0.08"
+
       # Exact origin(s) of the Vercel frontend, comma-separated.
       - key: ALLOWED_ORIGINS
         sync: false

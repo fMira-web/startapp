@@ -5,8 +5,12 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import * as db from './db.js';
 import { EMAIL_MODE, EMAIL_DESCRIPTION } from './mailer.js';
-import { registerAuthRoutes, requireAuth } from './auth.js';
+import { registerAuthRoutes, requireAuth, ensureSuperAdmin, OWNER_EMAIL } from './auth.js';
 import { registerHubRoutes, SEED_DEVELOPERS } from './hub.js';
+import * as marketDb from './market-db.js';
+import { registerMarketRoutes } from './market.js';
+import { registerAdminRoutes } from './admin.js';
+import { ensureSeedOffers, ROTATION_DAYS } from './offers.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
@@ -22,7 +26,7 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? '')
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // Render terminates TLS in front of the app.
-app.use(express.json({ limit: '64kb' }));
+app.use(express.json({ limit: '256kb' }));
 app.use(cookieParser());
 
 // credentials:true is required — the session travels in an httpOnly cookie.
@@ -35,7 +39,7 @@ app.use(
       return callback(new Error(`Origin not allowed: ${origin}`));
     },
     credentials: true,
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
     maxAge: 86400,
   })
@@ -103,15 +107,20 @@ app.get('/api/capabilities', (_req, res) => {
     email: EMAIL_MODE !== 'dev' || !IS_PRODUCTION,
     emailMode: EMAIL_MODE,
     storage: db.DB_MODE,
+    market: { rotationDays: ROTATION_DAYS, ownerEmail: OWNER_EMAIL },
   });
 });
 
 app.use('/api/auth', requireStorage);
 app.use('/api/proposal', requireStorage);
 app.use('/api/hub', requireStorage);
+app.use('/api/market', requireStorage);
+app.use('/api/admin', requireStorage);
 
 registerAuthRoutes(app, { authLimiter, codeLimiter });
 registerHubRoutes(app);
+registerMarketRoutes(app);
+registerAdminRoutes(app);
 
 /** Recording acceptance now depends on the session, not on a one-time code. */
 app.post('/api/proposal/accept', requireAuth, async (req, res) => {
@@ -195,6 +204,26 @@ async function start() {
       console.info(`Исполнителей в Центре: ${count}`);
     } catch (seedError) {
       console.warn('Не удалось засеять исполнителей:', seedError.message);
+    }
+
+    // Биржа: схема, пул предложений и права владельца площадки.
+    try {
+      await marketDb.initMarketDb();
+      const offerCount = await ensureSeedOffers();
+      console.info(`Биржа готова · предложений в пуле: ${offerCount} · ротация раз в ${ROTATION_DAYS} дн.`);
+    } catch (marketError) {
+      console.error('Не удалось поднять схему биржи:', marketError.message);
+    }
+
+    try {
+      const owner = await ensureSuperAdmin();
+      console.info(
+        owner.present
+          ? `Суперадминистратор: ${owner.email}`
+          : `Суперадминистратор: ${owner.email} (аккаунт ещё не зарегистрирован — права выдадутся при регистрации)`
+      );
+    } catch (ownerError) {
+      console.warn('Не удалось назначить суперадминистратора:', ownerError.message);
     }
   } catch (error) {
     storage.error = error.message;

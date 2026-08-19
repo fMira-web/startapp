@@ -373,4 +373,10 @@ export async function getCapabilities() {
   }
 }
 
+/**
+ * Низкоуровневый запрос переиспользуется биржей (`marketApi.js`): один
+ * разбор ошибок, один способ таскать сессионную куку, один базовый URL.
+ */
+export { request as apiRequest };
+
 export { ApiError, API_BASE_URL };

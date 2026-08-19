@@ -2,70 +2,47 @@ import { create } from 'zustand';
 import * as api from '../lib/api';
 
 /**
- * Session state.
+ * Сессия и роль аккаунта.
  *
- * The token itself lives in an httpOnly cookie the browser manages — nothing
- * sensitive is kept here, and nothing is written to localStorage. On boot the
- * app asks the server who it is talking to.
+ * Токен лежит в httpOnly-куке, которой управляет браузер: здесь не хранится
+ * ничего чувствительного и ничего не пишется в localStorage. На старте
+ * приложение спрашивает сервер, кто он такой.
  *
- * `screen` drives the auth surface:
- *   'login'  → email + password
- *   'register' → create an account
- *   'verify' → six-digit code just emailed to `pendingEmail`
+ * Роль («заказчик» или «программист») выбирается ровно один раз — на
+ * регистрации — и дальше приходит с сервера вместе с пользователем. Клиент
+ * её не переключает: функции setRole в этом сторе намеренно нет, а поле
+ * `pendingRole` живёт только между «нажал зарегистрироваться» и «ввёл код»,
+ * чтобы экран подтверждения знал, что показать дальше.
  *
- * Роль аккаунта («заказчик» или «исполнитель») выбирается при регистрации.
- * Сервер может её ещё не знать — тогда она живёт локально, чтобы интерфейс
- * сразу открывался нужной стороной.
+ * `screen` управляет экраном авторизации:
+ *   'login'    → почта и пароль
+ *   'register' → создание аккаунта
+ *   'verify'   → шестизначный код, отправленный на `pendingEmail`
  */
 
-const ROLE_KEY = 'account-role';
-
-export function readStoredRole(email) {
-  if (typeof localStorage === 'undefined') return null;
-  try {
-    const raw = JSON.parse(localStorage.getItem(ROLE_KEY) ?? '{}');
-    if (email && raw[email.toLowerCase()]) return raw[email.toLowerCase()];
-    return raw.__last ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function storeRole(email, role) {
-  if (typeof localStorage === 'undefined' || !role) return;
-  try {
-    const raw = JSON.parse(localStorage.getItem(ROLE_KEY) ?? '{}');
-    if (email) raw[email.toLowerCase()] = role;
-    raw.__last = role;
-    localStorage.setItem(ROLE_KEY, JSON.stringify(raw));
-  } catch {
-    /* приватный режим браузера — роль просто не переживёт перезагрузку */
-  }
-}
-
-function resolveRole(user, fallback = null) {
-  const fromServer = user?.role ?? user?.accountRole ?? null;
-  if (fromServer === 'client' || fromServer === 'developer') return fromServer;
-  return readStoredRole(user?.email) ?? fallback ?? 'client';
+function readRole(user) {
+  const role = user?.role;
+  return role === 'developer' || role === 'client' ? role : 'client';
 }
 
 export const useAuthStore = create((set, get) => ({
   status: 'loading', // 'loading' | 'anonymous' | 'authenticated'
   user: null,
-  /** 'client' | 'developer' — от неё зависит весь интерфейс после входа. */
-  role: 'client',
+  /** Дублирует user.role — удобно подписываться на одно поле. */
+  role: null,
   screen: 'login',
   pendingEmail: null,
   pendingRole: 'client',
-  devCode: null, // only populated when the backend has no mail provider
-  /** Почему письмо не дошло — показываем рядом с кодом, а не прячем. */
+  devCode: null, // приходит, только когда у бэкенда нет почтового провайдера
   deliveryNote: null,
   resendAfter: 0,
   error: null,
   fieldErrors: {},
   pending: false,
+  /** Аккаунт заблокирован администратором — показываем причину, а не «войдите». */
+  blockedMessage: null,
 
-  /* --- boot ----------------------------------------------------------- */
+  /* --- старт ---------------------------------------------------------- */
 
   async bootstrap() {
     try {
@@ -74,14 +51,19 @@ export const useAuthStore = create((set, get) => ({
       set({
         status: user ? 'authenticated' : 'anonymous',
         user,
-        role: user ? resolveRole(user) : 'client',
+        role: user ? readRole(user) : null,
+        blockedMessage: null,
       });
-    } catch {
-      set({ status: 'anonymous', user: null });
+    } catch (error) {
+      if (error?.code === 'account_blocked') {
+        set({ status: 'anonymous', user: null, role: null, blockedMessage: error.message });
+        return;
+      }
+      set({ status: 'anonymous', user: null, role: null });
     }
   },
 
-  /* --- navigation ----------------------------------------------------- */
+  /* --- навигация по экранам ------------------------------------------- */
 
   showLogin: () => set({ screen: 'login', error: null, fieldErrors: {} }),
   showRegister: () => set({ screen: 'register', error: null, fieldErrors: {} }),
@@ -96,32 +78,35 @@ export const useAuthStore = create((set, get) => ({
     }),
 
   setPendingRole: (pendingRole) => set({ pendingRole }),
-  /** Ручное переключение стороны — человек может быть и тем, и другим. */
-  setRole: (role) => {
-    storeRole(get().user?.email, role);
-    set({ role });
-  },
 
-  clearErrors: () => set({ error: null, fieldErrors: {} }),
+  clearErrors: () => set({ error: null, fieldErrors: {}, blockedMessage: null }),
   tickResend: () => set((state) => ({ resendAfter: Math.max(0, state.resendAfter - 1) })),
 
-  /* --- actions -------------------------------------------------------- */
+  /* --- действия -------------------------------------------------------- */
 
+  /**
+   * @param {{ email, password, fullName?, phone?, role: 'client'|'developer',
+   *           devProfile?: { sphere, level, stack, headline?, city?, rateHour? } }} input
+   */
   async register(input) {
     set({ pending: true, error: null, fieldErrors: {} });
     try {
       const role = input.role === 'developer' ? 'developer' : 'client';
       const result = await api.register({ ...input, role });
-      storeRole(input.email, role);
       set({
         pending: false,
         screen: 'verify',
         pendingEmail: result.email ?? input.email,
-        pendingRole: role,
-        role,
+        // Сервер возвращает роль, уже закреплённую за аккаунтом. Если человек
+        // повторно регистрирует существующую почту с другой ролью, приедет
+        // старая — и это правильный ответ, а не ошибка.
+        pendingRole: result.role ?? role,
         devCode: result.devCode ?? null,
         deliveryNote: result.deliveryNote ?? null,
         resendAfter: result.resendAfterSeconds ?? 60,
+        error: result.roleLocked
+          ? 'У этой почты уже есть аккаунт с другой ролью. Роль сменить нельзя — мы отправили код для входа в существующий.'
+          : null,
       });
       return true;
     } catch (error) {
@@ -135,7 +120,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   async login(input) {
-    set({ pending: true, error: null, fieldErrors: {} });
+    set({ pending: true, error: null, fieldErrors: {}, blockedMessage: null });
     try {
       const result = await api.login(input);
       api.rememberSession(result.user);
@@ -143,12 +128,12 @@ export const useAuthStore = create((set, get) => ({
         pending: false,
         status: 'authenticated',
         user: result.user,
-        role: resolveRole(result.user),
+        role: readRole(result.user),
         pendingEmail: null,
       });
       return true;
     } catch (error) {
-      // An unverified account is not a failure — it needs a code.
+      // Неподтверждённая почта — не отказ, а следующий шаг.
       if (error.code === 'email_unverified') {
         set({
           pending: false,
@@ -160,6 +145,10 @@ export const useAuthStore = create((set, get) => ({
           error: null,
         });
         return true;
+      }
+      if (error.code === 'account_blocked') {
+        set({ pending: false, error: null, blockedMessage: error.message });
+        return false;
       }
       set({
         pending: false,
@@ -177,13 +166,11 @@ export const useAuthStore = create((set, get) => ({
     try {
       const result = await api.verifyEmail({ email, code });
       api.rememberSession(result.user);
-      const role = resolveRole(result.user, get().pendingRole);
-      storeRole(email, role);
       set({
         pending: false,
         status: 'authenticated',
         user: result.user,
-        role,
+        role: readRole(result.user),
         pendingEmail: null,
         devCode: null,
         deliveryNote: null,
@@ -226,12 +213,14 @@ export const useAuthStore = create((set, get) => ({
     set({
       status: 'anonymous',
       user: null,
+      role: null,
       screen: 'login',
       pendingEmail: null,
       devCode: null,
       deliveryNote: null,
       error: null,
       fieldErrors: {},
+      blockedMessage: null,
     });
   },
 }));

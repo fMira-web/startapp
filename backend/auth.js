@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import jwt from 'jsonwebtoken';
 import * as db from './db.js';
+import * as market from './market-db.js';
 import { sendCodeEmail } from './mailer.js';
 
 const scrypt = promisify(crypto.scrypt);
@@ -16,6 +17,41 @@ const RESEND_COOLDOWN_SECONDS = 60;
 const MAX_CODE_ATTEMPTS = 5;
 
 const PURPOSE_VERIFY = 'verify_email';
+
+/* ------------------------------------------------------------------ */
+/* Роли и суперадминистратор                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Почта владельца площадки. Аккаунт с этим адресом получает права
+ * суперадминистратора при регистрации и восстанавливает их при каждом
+ * старте сервера — даже если кто-то снял флаг вручную в базе.
+ */
+export const OWNER_EMAIL = (process.env.OWNER_EMAIL ?? 'mmirazizf930@gmail.com')
+  .trim()
+  .toLowerCase();
+
+export const ROLES = ['client', 'developer'];
+
+function normaliseRole(value) {
+  return value === 'developer' ? 'developer' : value === 'client' ? 'client' : null;
+}
+
+/**
+ * Права суперадмина сильнее любого флага в базе: даже если запись владельца
+ * потеряет is_admin, эта функция вернёт его на месте при следующем старте.
+ */
+export async function ensureSuperAdmin() {
+  const owner = await db.findUserByEmail(OWNER_EMAIL);
+  if (!owner) return { email: OWNER_EMAIL, present: false };
+  if (owner.is_admin !== true) await db.setAdmin(owner.id, true);
+  if (owner.is_blocked === true) await db.setBlocked(owner.id, false);
+  return { email: OWNER_EMAIL, present: true, id: owner.id };
+}
+
+export function isOwner(user) {
+  return String(user?.email ?? '').toLowerCase() === OWNER_EMAIL;
+}
 
 /* ------------------------------------------------------------------ */
 /* Passwords — scrypt from node:crypto, no native dependency to build  */
@@ -144,13 +180,104 @@ export function requireAuth(req, res, next) {
   return next();
 }
 
-function publicUser(user) {
+/**
+ * Как requireAuth, но кладёт в `req.user` свежую запись из базы. Роль,
+ * права администратора и блокировка проверяются по базе, а не по подписи
+ * в куке: иначе разжалованный админ оставался бы админом до конца сессии.
+ */
+export async function requireUser(req, res, next) {
+  const session = readSession(req);
+  if (!session) {
+    return res.status(401).json({ code: 'unauthenticated', message: 'Войдите, чтобы продолжить.' });
+  }
+  try {
+    const user = await db.findUserById(session.sub);
+    if (!user || user.email_verified !== true) {
+      clearSession(res);
+      return res.status(401).json({ code: 'unauthenticated', message: 'Войдите, чтобы продолжить.' });
+    }
+    if (user.is_blocked === true) {
+      return res.status(403).json({
+        code: 'account_blocked',
+        message: user.blocked_reason
+          ? `Аккаунт заблокирован: ${user.blocked_reason}`
+          : 'Аккаунт заблокирован администратором.',
+      });
+    }
+    req.session = session;
+    req.user = user;
+    return next();
+  } catch (error) {
+    console.error('requireUser error:', error);
+    return res.status(500).json({ code: 'server_error', message: 'Не удалось проверить сессию.' });
+  }
+}
+
+/**
+ * Мягкая авторизация для публичных маршрутов: если сессия есть — кладём
+ * пользователя в `req.user`, если нет — просто пропускаем дальше. Нужна
+ * там, где ответ зависит от того, кто смотрит (например, отклики видны
+ * заказчику, но не случайному гостю).
+ */
+export async function attachUser(req, _res, next) {
+  const session = readSession(req);
+  if (!session) return next();
+  try {
+    const user = await db.findUserById(session.sub);
+    if (user && user.email_verified === true && user.is_blocked !== true) {
+      req.session = session;
+      req.user = user;
+    }
+  } catch (error) {
+    console.warn('attachUser:', error.message);
+  }
+  return next();
+}
+
+/** Доступ только владельцу площадки — суперадминистратору. */
+export function requireOwner(req, res, next) {
+  if (isOwner(req.user)) return next();
+  return res.status(403).json({
+    code: 'owner_only',
+    message: 'Это действие доступно только суперадминистратору площадки.',
+  });
+}
+
+/** Доступ только администраторам (включая владельца площадки). */
+export function requireAdmin(req, res, next) {
+  if (req.user?.is_admin === true || isOwner(req.user)) return next();
+  return res.status(403).json({ code: 'forbidden', message: 'Нужны права администратора.' });
+}
+
+/** Доступ только выбранной роли: `requireRole('client')`. */
+export function requireRole(role) {
+  return function guard(req, res, next) {
+    if (req.user?.role === role) return next();
+    return res.status(403).json({
+      code: 'wrong_role',
+      message:
+        role === 'client'
+          ? 'Это действие доступно только заказчикам.'
+          : 'Это действие доступно только программистам.',
+    });
+  };
+}
+
+export function publicUser(user) {
+  if (!user) return null;
   return {
     id: user.id,
     email: user.email,
     fullName: user.full_name ?? null,
     phone: user.phone ?? null,
+    avatarUrl: user.avatar_url ?? null,
+    /** Назначается один раз при регистрации и клиентом не меняется. */
+    role: user.role ?? 'client',
+    isAdmin: user.is_admin === true,
+    isOwner: isOwner(user),
+    isBlocked: user.is_blocked === true,
     emailVerified: user.email_verified === true,
+    createdAt: user.created_at ?? null,
   };
 }
 
@@ -260,7 +387,55 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
   /* --- register ------------------------------------------------------ */
   app.post('/api/auth/register', authLimiter, async (req, res) => {
     try {
-      const { email, password, fullName, phone } = req.body ?? {};
+      const { email, password, fullName, phone, role, devProfile } = req.body ?? {};
+
+      /* Роль — обязательный шаг регистрации и единственный момент, когда
+         её вообще можно выбрать. Дальше она фиксируется. */
+      const accountRole = normaliseRole(role);
+      if (!accountRole) {
+        return res.status(400).json({
+          code: 'bad_role',
+          field: 'role',
+          message: 'Выберите роль: заказчик или программист.',
+        });
+      }
+
+      /* Для программиста регистрация двухшаговая: сфера, стек и уровень
+         собираются здесь же и сразу становятся профилем. */
+      let devInput = null;
+      if (accountRole === 'developer') {
+        const source = devProfile ?? {};
+        if (!market.SPHERE_IDS.has(source.sphere)) {
+          return res.status(400).json({
+            code: 'bad_sphere',
+            field: 'sphere',
+            message: 'Выберите сферу разработки.',
+          });
+        }
+        if (!market.LEVEL_IDS.has(source.level)) {
+          return res.status(400).json({
+            code: 'bad_level',
+            field: 'level',
+            message: 'Выберите уровень: Junior, Middle, Senior или Lead.',
+          });
+        }
+        const stack = typeof source.stack === 'string' ? source.stack.trim() : '';
+        if (stack.length < 2) {
+          return res.status(400).json({
+            code: 'bad_stack',
+            field: 'stack',
+            message: 'Укажите основной стек технологий.',
+          });
+        }
+        devInput = {
+          sphere: source.sphere,
+          level: source.level,
+          stack: stack.slice(0, 400),
+          headline: typeof source.headline === 'string' ? source.headline.trim().slice(0, 160) : null,
+          city: typeof source.city === 'string' ? source.city.trim().slice(0, 80) : null,
+          rateHour: Math.max(0, Math.min(50_000_000, Number(source.rateHour) || 0)),
+        };
+      }
 
       const normalisedEmail = normaliseEmail(email);
       if (!normalisedEmail) {
@@ -308,6 +483,10 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
         return res.status(200).json({
           status: 'verification_sent',
           email: existing.email,
+          // Роль показываем ту, что уже зафиксирована за аккаунтом:
+          // повторная регистрация не способ её поменять.
+          role: existing.role ?? accountRole,
+          roleLocked: (existing.role ?? accountRole) !== accountRole,
           ...result,
         });
       }
@@ -317,7 +496,19 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
         passwordHash: await hashPassword(password),
         fullName: typeof fullName === 'string' && fullName.trim() ? fullName.trim().slice(0, 120) : null,
         phone: cleanPhone,
+        role: accountRole,
+        // Владелец площадки получает права сразу, без ручного шага.
+        isAdmin: normalisedEmail === OWNER_EMAIL,
       });
+
+      // Профиль заводится сразу — иначе на доске появится аккаунт без
+      // единого поля, а карточку исполнителя нечем будет показать.
+      try {
+        if (accountRole === 'developer') await market.upsertDevProfile(user.id, devInput);
+        else await market.upsertClientProfile(user.id, {});
+      } catch (profileError) {
+        console.warn('Не удалось создать профиль:', profileError.message);
+      }
 
       let result;
       try {
@@ -333,7 +524,9 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
         throw error;
       }
 
-      return res.status(201).json({ status: 'verification_sent', email: user.email, ...result });
+      return res
+        .status(201)
+        .json({ status: 'verification_sent', email: user.email, role: accountRole, ...result });
     } catch (error) {
       return fail(res, error);
     }
@@ -353,11 +546,37 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
         return res.status(410).json({ code: 'expired', message: 'Срок кода истёк. Запросите новый.' });
       }
 
+      if (user.is_blocked === true) {
+        return res.status(403).json({
+          code: 'account_blocked',
+          message: 'Аккаунт заблокирован администратором.',
+        });
+      }
+
       await checkCode(user, code);
       await db.markEmailVerified(user.id);
       await db.touchLogin(user.id);
 
+      // Владелец площадки — суперадмин при любом сценарии входа.
+      if (user.email === OWNER_EMAIL && user.is_admin !== true) {
+        await db.setAdmin(user.id, true);
+      }
+
       const fresh = await db.findUserById(user.id);
+
+      // Страховка на случай, если профиль не создался на шаге регистрации.
+      try {
+        if (fresh.role === 'developer') {
+          const profile = await market.getDevProfile(fresh.id);
+          if (!profile) await market.upsertDevProfile(fresh.id, {});
+        } else {
+          const profile = await market.getClientProfile(fresh.id);
+          if (!profile) await market.upsertClientProfile(fresh.id, {});
+        }
+      } catch (profileError) {
+        console.warn('Не удалось дозаполнить профиль:', profileError.message);
+      }
+
       issueSession(res, fresh);
       return res.json({ user: publicUser(fresh) });
     } catch (error) {
@@ -409,6 +628,15 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
           .json({ code: 'bad_credentials', message: 'Почта или пароль неверные.' });
       }
 
+      if (user.is_blocked === true) {
+        return res.status(403).json({
+          code: 'account_blocked',
+          message: user.blocked_reason
+            ? `Аккаунт заблокирован: ${user.blocked_reason}`
+            : 'Аккаунт заблокирован администратором. Напишите в поддержку.',
+        });
+      }
+
       if (!user.email_verified) {
         let sent = {};
         try {
@@ -431,8 +659,10 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
       }
 
       await db.touchLogin(user.id);
-      issueSession(res, user);
-      return res.json({ user: publicUser(user) });
+      if (user.email === OWNER_EMAIL && user.is_admin !== true) await db.setAdmin(user.id, true);
+      const fresh = (await db.findUserById(user.id)) ?? user;
+      issueSession(res, fresh);
+      return res.json({ user: publicUser(fresh) });
     } catch (error) {
       return fail(res, error);
     }
@@ -442,6 +672,20 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
   app.post('/api/auth/logout', (req, res) => {
     clearSession(res);
     return res.json({ ok: true });
+  });
+
+  /* --- смена роли: намеренно запрещена -------------------------------- */
+
+  /**
+   * Роль выбирается один раз. Маршрут существует, чтобы у клиента был
+   * честный ответ вместо 404 и чтобы намерение было видно в коде.
+   */
+  app.post('/api/auth/role', requireAuth, async (req, res) => {
+    return res.status(403).json({
+      code: 'role_locked',
+      message:
+        'Роль выбирается один раз при регистрации и не меняется. Если это ошибка — напишите администратору площадки.',
+    });
   });
 
   /* --- current user -------------------------------------------------- */
@@ -455,6 +699,14 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
       if (!user || !user.email_verified) {
         clearSession(res);
         return res.status(401).json({ code: 'unauthenticated', message: 'Вы не вошли в аккаунт.' });
+      }
+      if (user.is_blocked === true) {
+        return res.status(403).json({
+          code: 'account_blocked',
+          message: user.blocked_reason
+            ? `Аккаунт заблокирован: ${user.blocked_reason}`
+            : 'Аккаунт заблокирован администратором.',
+        });
       }
       return res.json({ user: publicUser(user) });
     } catch (error) {

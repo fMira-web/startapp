@@ -43,7 +43,6 @@ export default function Header() {
   const acceptance = useQuoteStore((state) => state.acceptance);
   const user = useAuthStore((state) => state.user);
   const role = useAuthStore((state) => state.role);
-  const setRole = useAuthStore((state) => state.setRole);
   const signOut = useAuthStore((state) => state.signOut);
   const view = useHubStore((state) => state.view);
   const setView = useHubStore((state) => state.setView);
@@ -92,35 +91,21 @@ export default function Header() {
             </span>
           </button>
 
-          {/* Роль выбрана при регистрации, но человек может быть и тем,
-              и другим — переключатель всегда под рукой. */}
-          <div
-            role="group"
-            aria-label="Моя роль"
-            className="hidden items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 md:flex"
-          >
-            {[
-              { id: 'client', label: 'Заказчик', icon: Briefcase },
-              { id: 'developer', label: 'Исполнитель', icon: Code2 },
-            ].map((option) => {
-              const active = role === option.id;
-              const Icon = option.icon;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setRole(option.id)}
-                  className={`flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold transition-colors duration-150 ${
-                    active ? 'bg-brand text-white' : 'text-ink-muted hover:text-ink'
-                  }`}
-                >
-                  <Icon size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
+          {/* Роль выбирается один раз при регистрации, поэтому здесь она
+              показана как факт об аккаунте, а не как переключатель. */}
+          {role && (
+            <span
+              className="hidden items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-soft md:inline-flex"
+              title="Роль выбрана при регистрации и не меняется"
+            >
+              {role === 'developer' ? (
+                <Code2 size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
+              ) : (
+                <Briefcase size={ICON.xs} strokeWidth={STROKE.regular} aria-hidden="true" />
+              )}
+              {role === 'developer' ? 'Программист' : 'Заказчик'}
+            </span>
+          )}
 
           <CurrencySwitch />
 

@@ -14,6 +14,18 @@ import { useTemplate, useQuote, useMeta } from './store/useQuoteStore';
 import { useAuthStore } from './store/useAuthStore';
 import { useHubStore } from './store/useHubStore';
 import { formatCurrency, formatAlternate, formatDate, FX } from './lib/format';
+import { useMarketStore } from './store/useMarketStore';
+import { parseHash, subscribe, toHref } from './lib/router';
+import MarketHeader from './components/Market/MarketHeader';
+import HomePage from './components/Market/HomePage';
+import ProjectsPage from './components/Market/ProjectsPage';
+import ProjectPage from './components/Market/ProjectPage';
+import ProjectForm from './components/Market/ProjectForm';
+import DevelopersPage from './components/Market/DevelopersPage';
+import ProfilePage from './components/Market/ProfilePage';
+import CabinetPage from './components/Market/CabinetPage';
+import OffersHistoryPage from './components/Market/OffersHistoryPage';
+import AdminPage from './components/Admin/AdminPage';
 
 function MarketSection() {
   const template = useTemplate();
@@ -203,23 +215,134 @@ function Proposal() {
   );
 }
 
-export default function App() {
+/**
+ * Прежний раздел с коммерческим предложением и Центром проектов.
+ * Живёт по адресу #/proposal и требует входа — как и раньше.
+ */
+function ProposalApp() {
   const status = useAuthStore((state) => state.status);
-  const bootstrap = useAuthStore((state) => state.bootstrap);
   const view = useHubStore((state) => state.view);
   const setView = useHubStore((state) => state.setView);
 
-  useEffect(() => {
-    bootstrap();
-  }, [bootstrap]);
-
-  if (status === 'loading') return <BootSplash />;
-  if (status === 'anonymous') return <AuthScreen />;
+  if (status !== 'authenticated') return <AuthScreen />;
 
   return (
     <div className="min-h-screen bg-canvas">
       <Header />
       {view === 'hub' ? <ProjectHub onBack={() => setView('proposal')} /> : <Proposal />}
+    </div>
+  );
+}
+
+function MarketFooter() {
+  return (
+    <footer className="border-t border-line bg-surface">
+      <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-3 px-5 py-10 sm:flex-row sm:items-baseline sm:justify-between sm:px-8">
+        <p className="text-sm text-ink-muted">
+          Toshkent Freelance · биржа заказов и исполнителей
+        </p>
+        <nav aria-label="Дополнительно" className="flex flex-wrap gap-x-5 gap-y-2">
+          {[
+            { to: '/projects', label: 'Проекты' },
+            { to: '/developers', label: 'Исполнители' },
+            { to: '/offers', label: 'Прошедшие акции' },
+            { to: '/proposal', label: 'Коммерческое предложение' },
+          ].map((item) => (
+            <a
+              key={item.to}
+              href={toHref(item.to)}
+              className="text-sm text-ink-muted underline-offset-4 transition-colors hover:text-brand hover:underline"
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
+      </div>
+    </footer>
+  );
+}
+
+/** Экраны биржи. Гость видит всё, кроме кабинета и админки. */
+function MarketPage({ route }) {
+  switch (route.name) {
+    case 'projects':
+      return <ProjectsPage />;
+    case 'project':
+      return <ProjectPage projectId={route.params.id} />;
+    case 'project-new':
+      return (
+        <div className="mx-auto w-full max-w-[820px] px-5 py-10 sm:px-8 sm:py-14">
+          <ProjectForm variant="full" />
+        </div>
+      );
+    case 'developers':
+      return <DevelopersPage />;
+    case 'profile':
+      return <ProfilePage userId={route.params.id} />;
+    case 'cabinet':
+      return <CabinetPage />;
+    case 'admin':
+      return <AdminPage />;
+    case 'offers':
+      return <OffersHistoryPage />;
+    case 'home':
+    default:
+      return <HomePage />;
+  }
+}
+
+export default function App() {
+  const status = useAuthStore((state) => state.status);
+  const bootstrap = useAuthStore((state) => state.bootstrap);
+  const showLogin = useAuthStore((state) => state.showLogin);
+  const showRegister = useAuthStore((state) => state.showRegister);
+  const route = useMarketStore((state) => state.route);
+  const setRoute = useMarketStore((state) => state.setRoute);
+  const loadMeta = useMarketStore((state) => state.loadMeta);
+
+  useEffect(() => {
+    bootstrap();
+    loadMeta();
+  }, [bootstrap, loadMeta]);
+
+  // Роутер держим в сторе, чтобы шапка и страницы читали один и тот же адрес.
+  useEffect(() => {
+    setRoute(parseHash());
+    return subscribe(setRoute);
+  }, [setRoute]);
+
+  // Экраны входа и регистрации — те же самые, просто вызванные по адресу.
+  useEffect(() => {
+    if (route.name === 'login') showLogin();
+    if (route.name === 'register') showRegister();
+  }, [route.name, showLogin, showRegister]);
+
+  if (status === 'loading') return <BootSplash />;
+
+  if (route.name === 'proposal') return <ProposalApp />;
+
+  if (route.name === 'login' || route.name === 'register') {
+    // Вошедшему на этих адресах делать нечего — возвращаем на главную.
+    if (status === 'authenticated') {
+      window.location.hash = '#/';
+      return <BootSplash />;
+    }
+    return <AuthScreen />;
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col bg-canvas">
+      <a
+        href="#market-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-control focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white"
+      >
+        К содержанию
+      </a>
+      <MarketHeader />
+      <main id="market-content" className="flex-1">
+        <MarketPage route={route} />
+      </main>
+      <MarketFooter />
     </div>
   );
 }

@@ -1,3 +1,9 @@
+> **Биржа фриланса.** Поверх этого проекта собрана площадка заказов:
+> роли при регистрации, доска проектов с фильтрами, отклики, статусы заказа,
+> профили, чат, отзывы, админ-панель и динамические предложения главной.
+> Схема базы, описание REST API и разбор компонентов — в [ARCHITECTURE.md](./ARCHITECTURE.md).
+> Прежний раздел с коммерческим предложением остался и живёт по адресу `#/proposal`.
+
 # Interactive Proposal & Quoting Experience
 
 A private, account-gated web experience where a client signs in, reads their

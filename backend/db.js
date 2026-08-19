@@ -29,6 +29,17 @@ create table if not exists users (
   last_login_at timestamptz
 );
 
+-- Ролевая система. Колонки добавляются отдельно, чтобы миграция прошла
+-- и на базе, которая уже жила со старой схемой.
+alter table users add column if not exists role           text    not null default 'client';
+alter table users add column if not exists is_admin       boolean not null default false;
+alter table users add column if not exists is_blocked     boolean not null default false;
+alter table users add column if not exists blocked_reason text;
+alter table users add column if not exists avatar_url     text;
+alter table users add column if not exists created_ip     text;
+
+create index if not exists users_role_idx on users (role);
+
 create table if not exists email_codes (
   id          text primary key,
   user_id     text not null references users(id) on delete cascade,
@@ -153,7 +164,7 @@ pool = new pg.Pool({
   return pool;
 }
 
-async function query(text, params = []) {
+export async function query(text, params = []) {
   const client = await getPool();
   const result = await client.query(text, params);
   return result.rows;
@@ -163,7 +174,7 @@ async function query(text, params = []) {
 /* In-memory adapter                                                   */
 /* ------------------------------------------------------------------ */
 
-const memory = {
+export const memory = {
   users: new Map(), // id -> user
   byEmail: new Map(), // email -> id
   codes: [], // newest last
@@ -194,7 +205,14 @@ export async function initDb() {
   return { mode: 'postgres' };
 }
 
-export async function createUser({ email, passwordHash, fullName = null, phone = null }) {
+export async function createUser({
+  email,
+  passwordHash,
+  fullName = null,
+  phone = null,
+  role = 'client',
+  isAdmin = false,
+}) {
   const id = crypto.randomUUID();
   if (DB_MODE === 'memory') {
     const user = {
@@ -203,6 +221,11 @@ export async function createUser({ email, passwordHash, fullName = null, phone =
       password_hash: passwordHash,
       full_name: fullName,
       phone,
+      role,
+      is_admin: isAdmin,
+      is_blocked: false,
+      blocked_reason: null,
+      avatar_url: null,
       email_verified: false,
       created_at: new Date(),
       last_login_at: null,
@@ -212,12 +235,152 @@ export async function createUser({ email, passwordHash, fullName = null, phone =
     return user;
   }
   const rows = await query(
-    `insert into users (id, email, password_hash, full_name, phone)
-     values ($1, $2, $3, $4, $5)
+    `insert into users (id, email, password_hash, full_name, phone, role, is_admin)
+     values ($1, $2, $3, $4, $5, $6, $7)
      returning *`,
-    [id, email, passwordHash, fullName, phone]
+    [id, email, passwordHash, fullName, phone, role, isAdmin]
   );
   return rows[0];
+}
+
+/* ------------------------------------------------------------------ */
+/* Роли, права и блокировки                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Роль назначается один раз — при регистрации. Отдельной функции «сменить
+ * роль» здесь намеренно нет: единственный способ поменять её — обращение
+ * к суперадмину, который делает это через adminSetRole ниже.
+ */
+export async function adminSetRole(userId, role) {
+  if (DB_MODE === 'memory') {
+    const user = memory.users.get(userId);
+    if (user) user.role = role;
+    return user ?? null;
+  }
+  const rows = await query('update users set role = $2 where id = $1 returning *', [userId, role]);
+  return rows[0] ?? null;
+}
+
+export async function setAdmin(userId, isAdmin) {
+  if (DB_MODE === 'memory') {
+    const user = memory.users.get(userId);
+    if (user) user.is_admin = Boolean(isAdmin);
+    return user ?? null;
+  }
+  const rows = await query('update users set is_admin = $2 where id = $1 returning *', [
+    userId,
+    Boolean(isAdmin),
+  ]);
+  return rows[0] ?? null;
+}
+
+export async function setBlocked(userId, isBlocked, reason = null) {
+  if (DB_MODE === 'memory') {
+    const user = memory.users.get(userId);
+    if (user) {
+      user.is_blocked = Boolean(isBlocked);
+      user.blocked_reason = isBlocked ? reason : null;
+    }
+    return user ?? null;
+  }
+  const rows = await query(
+    'update users set is_blocked = $2, blocked_reason = $3 where id = $1 returning *',
+    [userId, Boolean(isBlocked), isBlocked ? reason : null]
+  );
+  return rows[0] ?? null;
+}
+
+export async function updateUserProfile(userId, patch = {}) {
+  const allowed = ['full_name', 'phone', 'avatar_url'];
+  const entries = Object.entries(patch).filter(
+    ([key, value]) => allowed.includes(key) && value !== undefined
+  );
+  if (!entries.length) return findUserById(userId);
+
+  if (DB_MODE === 'memory') {
+    const user = memory.users.get(userId);
+    if (user) for (const [key, value] of entries) user[key] = value;
+    return user ?? null;
+  }
+  const sets = entries.map(([key], index) => `${key} = $${index + 2}`).join(', ');
+  const rows = await query(`update users set ${sets} where id = $1 returning *`, [
+    userId,
+    ...entries.map(([, value]) => value),
+  ]);
+  return rows[0] ?? null;
+}
+
+export async function deleteUser(userId) {
+  if (DB_MODE === 'memory') {
+    const user = memory.users.get(userId);
+    if (!user) return false;
+    memory.users.delete(userId);
+    memory.byEmail.delete(user.email);
+    return true;
+  }
+  const rows = await query('delete from users where id = $1 returning id', [userId]);
+  return rows.length > 0;
+}
+
+/** Список для админ-панели: поиск по почте и имени, фильтр по роли. */
+export async function listUsers({ search = '', role = null, limit = 100, offset = 0 } = {}) {
+  const needle = String(search ?? '').trim().toLowerCase();
+
+  if (DB_MODE === 'memory') {
+    const all = [...memory.users.values()]
+      .filter((user) => (role ? user.role === role : true))
+      .filter((user) =>
+        needle
+          ? `${user.email} ${user.full_name ?? ''}`.toLowerCase().includes(needle)
+          : true
+      )
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return { users: all.slice(offset, offset + limit), total: all.length };
+  }
+
+  const where = [];
+  const params = [];
+  if (role) {
+    params.push(role);
+    where.push(`role = $${params.length}`);
+  }
+  if (needle) {
+    params.push(`%${needle}%`);
+    where.push(`(lower(email) like $${params.length} or lower(coalesce(full_name, '')) like $${params.length})`);
+  }
+  const clause = where.length ? `where ${where.join(' and ')}` : '';
+
+  const totalRows = await query(`select count(*)::int as count from users ${clause}`, params);
+  const rows = await query(
+    `select * from users ${clause} order by created_at desc limit ${Number(limit)} offset ${Number(offset)}`,
+    params
+  );
+  return { users: rows, total: totalRows[0]?.count ?? rows.length };
+}
+
+/** Сколько всего аккаунтов какой роли — для сводки в админке. */
+export async function userStats() {
+  if (DB_MODE === 'memory') {
+    const all = [...memory.users.values()];
+    return {
+      total: all.length,
+      clients: all.filter((user) => user.role === 'client').length,
+      developers: all.filter((user) => user.role === 'developer').length,
+      admins: all.filter((user) => user.is_admin).length,
+      blocked: all.filter((user) => user.is_blocked).length,
+    };
+  }
+  const rows = await query(`
+    select
+      count(*)::int                                              as total,
+      count(*) filter (where role = 'client')::int                as clients,
+      count(*) filter (where role = 'developer')::int             as developers,
+      count(*) filter (where is_admin)::int                       as admins,
+      count(*) filter (where is_blocked)::int                     as blocked
+    from users
+  `);
+  return rows[0] ?? { total: 0, clients: 0, developers: 0, admins: 0, blocked: 0 };
 }
 
 export async function findUserByEmail(email) {

@@ -14,6 +14,7 @@ process.env.PORT = '4311';
 process.env.JWT_SECRET = 'mail-test-secret-mail-test-secret';
 process.env.OWNER_EMAIL = 'owner@example.uz';
 process.env.DATABASE_URL = '';
+process.env.BREVO_API_KEY = '';
 process.env.RESEND_API_KEY = '';
 process.env.SMTP_HOST = '';
 process.env.SMTP_USER = '';

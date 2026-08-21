@@ -363,6 +363,18 @@ async function checkCode(user, submitted) {
   await db.consumeCode(record.id);
 }
 
+/** Нарушение уникального индекса по email — в Postgres это код 23505. */
+function isDuplicateEmail(error) {
+  const code = String(error?.code ?? '');
+  const message = String(error?.message ?? '').toLowerCase();
+  return (
+    code === '23505' ||
+    code === 'P2002' ||
+    message.includes('users_email_key') ||
+    (message.includes('duplicate key') && message.includes('email'))
+  );
+}
+
 function fail(res, error) {
   const status = error.status ?? 500;
   if (status >= 500) console.error('Auth error:', error);
@@ -492,15 +504,31 @@ export function registerAuthRoutes(app, { authLimiter, codeLimiter }) {
         });
       }
 
-      const user = await db.createUser({
-        email: normalisedEmail,
-        passwordHash: await hashPassword(password),
-        fullName: typeof fullName === 'string' && fullName.trim() ? fullName.trim().slice(0, 120) : null,
-        phone: cleanPhone,
-        role: accountRole,
-        // Владелец площадки получает права сразу, без ручного шага.
-        isAdmin: normalisedEmail === OWNER_EMAIL,
-      });
+      let user;
+      try {
+        user = await db.createUser({
+          email: normalisedEmail,
+          passwordHash: await hashPassword(password),
+          fullName:
+            typeof fullName === 'string' && fullName.trim() ? fullName.trim().slice(0, 120) : null,
+          phone: cleanPhone,
+          role: accountRole,
+          // Владелец площадки получает права сразу, без ручного шага.
+          isAdmin: normalisedEmail === OWNER_EMAIL,
+        });
+      } catch (createError) {
+        // Уникальный индекс по email — вторая линия обороны после проверки
+        // выше: две одновременные регистрации одного адреса доходят сюда
+        // обе. Это тот же самый отказ «почта занята», а не сбой сервера.
+        if (isDuplicateEmail(createError)) {
+          return res.status(409).json({
+            code: 'email_taken',
+            field: 'email',
+            message: 'На эту почту уже есть аккаунт. Войдите.',
+          });
+        }
+        throw createError;
+      }
 
       // Профиль заводится сразу — иначе на доске появится аккаунт без
       // единого поля, а карточку исполнителя нечем будет показать.

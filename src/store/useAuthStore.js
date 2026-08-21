@@ -25,6 +25,15 @@ function readRole(user) {
   return role === 'developer' || role === 'client' ? role : 'client';
 }
 
+/**
+ * Подпись под полем должна читаться за долю секунды, поэтому длинный текст
+ * с объяснением уезжает в красную плашку сверху, а под инпутом остаётся
+ * короткий ярлык.
+ */
+const FIELD_SHORTHAND = {
+  email_taken: 'Эта почта уже занята.',
+};
+
 export const useAuthStore = create((set, get) => ({
   status: 'loading', // 'loading' | 'anonymous' | 'authenticated'
   user: null,
@@ -38,6 +47,12 @@ export const useAuthStore = create((set, get) => ({
   resendAfter: 0,
   error: null,
   fieldErrors: {},
+  /**
+   * На этот адрес уже есть аккаунт. Отдельный флаг, а не просто текст: по
+   * нему рисуется кнопка «Перейти ко входу» — единственное осмысленное
+   * действие в этой ситуации.
+   */
+  emailTaken: false,
   pending: false,
   /** Аккаунт заблокирован администратором — показываем причину, а не «войдите». */
   blockedMessage: null,
@@ -71,19 +86,21 @@ export const useAuthStore = create((set, get) => ({
 
   /* --- навигация по экранам ------------------------------------------- */
 
-  showLogin: () => set({ screen: 'login', error: null, fieldErrors: {} }),
-  showRegister: () => set({ screen: 'register', error: null, fieldErrors: {} }),
+  showLogin: () => set({ screen: 'login', error: null, fieldErrors: {}, emailTaken: false }),
+  showRegister: () => set({ screen: 'register', error: null, fieldErrors: {}, emailTaken: false }),
   backFromVerify: () =>
     set({
       screen: 'login',
       error: null,
       fieldErrors: {},
+      emailTaken: false,
       pendingEmail: null,
     }),
 
   setPendingRole: (pendingRole) => set({ pendingRole }),
 
-  clearErrors: () => set({ error: null, fieldErrors: {}, blockedMessage: null, errorDetail: null }),
+  clearErrors: () =>
+    set({ error: null, fieldErrors: {}, blockedMessage: null, errorDetail: null, emailTaken: false }),
   tickResend: () => set((state) => ({ resendAfter: Math.max(0, state.resendAfter - 1) })),
 
   /* --- действия -------------------------------------------------------- */
@@ -93,7 +110,7 @@ export const useAuthStore = create((set, get) => ({
    *           devProfile?: { sphere, level, stack, headline?, city?, rateHour? } }} input
    */
   async register(input) {
-    set({ pending: true, error: null, fieldErrors: {}, errorDetail: null });
+    set({ pending: true, error: null, fieldErrors: {}, errorDetail: null, emailTaken: false });
     try {
       const role = input.role === 'developer' ? 'developer' : 'client';
       const result = await api.register({ ...input, role });
@@ -112,10 +129,18 @@ export const useAuthStore = create((set, get) => ({
       });
       return true;
     } catch (error) {
+      /* Занятая почта — не техническая ошибка, а развилка: у человека уже
+         есть аккаунт. Поэтому она показывается сразу двумя способами —
+         красной плашкой сверху (с кнопкой «Войти») и подписью под полем,
+         чтобы было видно, о каком именно поле речь. */
+      const taken = error.code === 'email_taken';
       set({
         pending: false,
-        error: error.field ? null : error.message,
-        fieldErrors: error.field ? { [error.field]: error.message } : {},
+        error: taken || !error.field ? error.message : null,
+        emailTaken: taken,
+        fieldErrors: error.field
+          ? { [error.field]: FIELD_SHORTHAND[error.code] ?? error.message }
+          : {},
         errorDetail: error.payload?.detail ?? null,
       });
       return false;
@@ -123,7 +148,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   async login(input) {
-    set({ pending: true, error: null, fieldErrors: {}, blockedMessage: null });
+    set({ pending: true, error: null, fieldErrors: {}, blockedMessage: null, emailTaken: false });
     try {
       const result = await api.login(input);
       api.rememberSession(result.user);
@@ -217,6 +242,7 @@ export const useAuthStore = create((set, get) => ({
       error: null,
       fieldErrors: {},
       blockedMessage: null,
+      emailTaken: false,
     });
   },
 }));

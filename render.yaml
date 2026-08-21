@@ -46,12 +46,25 @@ services:
       - key: ALLOWED_ORIGINS
         sync: false
 
-      # Email: configure Resend OR the SMTP block.
-      - key: RESEND_API_KEY
+      # ── Почта ──────────────────────────────────────────────────────
+      # Render закрывает исходящие SMTP-порты (25/465/587), поэтому здесь
+      # работает только HTTP API: BREVO_API_KEY + подтверждённый MAIL_FROM.
+      # SMTP-переменные оставлены для локальной разработки и хостингов без
+      # блокировок; на Render их можно не заполнять.
+      #
+      #   BREVO_API_KEY — ключ xkeysib-… с https://app.brevo.com/settings/keys/api
+      #   MAIL_FROM     — адрес, подтверждённый на https://app.brevo.com/senders/list
+      - key: BREVO_API_KEY
         sync: false
       - key: MAIL_FROM
         sync: false
       - key: MAIL_REPLY_TO
+        sync: false
+      - key: MAIL_PRIMARY
+        value: brevo
+
+      # Запасные транспорты — необязательные.
+      - key: RESEND_API_KEY
         sync: false
       - key: SMTP_HOST
         sync: false

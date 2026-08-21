@@ -11,6 +11,7 @@ process.env.OWNER_EMAIL = 'mmirazizf930@gmail.com';
 // dotenv не перезаписывает уже существующие ключи, поэтому пустые строки
 // надёжнее, чем delete: иначе .env вернёт боевую базу и живой SMTP.
 process.env.DATABASE_URL = '';
+process.env.BREVO_API_KEY = '';
 process.env.RESEND_API_KEY = '';
 process.env.SMTP_HOST = '';
 process.env.SMTP_USER = '';

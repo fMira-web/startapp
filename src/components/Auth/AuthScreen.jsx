@@ -11,7 +11,7 @@ import PasswordField from './PasswordField';
 import PhoneField from '../Checkout/PhoneField';
 import OtpInput from '../Checkout/OtpInput';
 
-function ErrorSummary({ message, detail = null, refObject }) {
+function ErrorSummary({ message, detail = null, refObject, action = null }) {
   if (!message) return null;
   return (
     <div
@@ -32,6 +32,17 @@ function ErrorSummary({ message, detail = null, refObject }) {
             тому, кто настраивает почту, она экономит поход в консоль. */}
         {detail && (
           <p className="mt-1.5 text-[0.75rem] leading-relaxed text-danger/80">{detail}</p>
+        )}
+        {/* Ошибка, у которой есть очевидное продолжение, должна нести кнопку:
+            «почта занята» лечится входом, а не перечитыванием текста. */}
+        {action && (
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="mt-2.5 inline-flex min-h-9 cursor-pointer items-center rounded-control border border-danger/40 bg-surface px-3 text-[0.8125rem] font-semibold text-danger transition-colors duration-150 hover:bg-danger/10"
+          >
+            {action.label}
+          </button>
         )}
       </div>
     </div>
@@ -87,6 +98,24 @@ function TextField({
       ) : null}
     </div>
   );
+}
+
+/**
+ * Собирает ошибки полей, пропуская пустые значения.
+ *
+ * Раньше здесь был обычный spread, и он ломал ровно тот случай, ради
+ * которого нужен: после исправления поля в localErrors кладётся null, и
+ * этот null перекрывал пришедший с сервера текст — «почта уже занята»
+ * приходило, но на экране не появлялось ничего.
+ */
+function mergeFieldErrors(...sources) {
+  const result = {};
+  for (const source of sources) {
+    for (const [key, value] of Object.entries(source ?? {})) {
+      if (value) result[key] = value;
+    }
+  }
+  return result;
 }
 
 /**
@@ -312,6 +341,8 @@ export default function AuthScreen() {
   const error = useAuthStore((state) => state.error);
   const errorDetail = useAuthStore((state) => state.errorDetail);
   const fieldErrors = useAuthStore((state) => state.fieldErrors);
+  const emailTaken = useAuthStore((state) => state.emailTaken);
+  const clearErrors = useAuthStore((state) => state.clearErrors);
   const pendingEmail = useAuthStore((state) => state.pendingEmail);
   const resendAfter = useAuthStore((state) => state.resendAfter);
 
@@ -363,11 +394,18 @@ export default function AuthScreen() {
     return () => clearTimeout(timer);
   }, [screen]);
 
-  const combinedErrors = { ...fieldErrors, ...localErrors };
+  const combinedErrors = mergeFieldErrors(fieldErrors, localErrors);
 
   useEffect(() => {
     if (error) summaryRef.current?.focus();
   }, [error]);
+
+  /* Сервер может забраковать поле первого шага, когда программист уже на
+     втором: там нет ни почты, ни пароля, и ошибка оказалась бы нарисована
+     на невидимом поле. Возвращаем на тот шаг, где её видно. */
+  useEffect(() => {
+    if (fieldErrors.email || fieldErrors.password || fieldErrors.phone) setStage('account');
+  }, [fieldErrors]);
 
   const submitRegister = async () => {
     const problems = {};
@@ -585,7 +623,12 @@ export default function AuthScreen() {
                     submitRegister();
                   }}
                 >
-                  <ErrorSummary message={error} detail={errorDetail} refObject={summaryRef} />
+                  <ErrorSummary
+                    message={error}
+                    detail={errorDetail}
+                    refObject={summaryRef}
+                    action={emailTaken ? { label: 'Войти в этот аккаунт', onClick: showLogin } : null}
+                  />
 
                   {stage === 'account' ? (
                     <>
@@ -619,6 +662,9 @@ export default function AuthScreen() {
                         onChange={(next) => {
                           setEmail(next);
                           setLocalErrors((state) => ({ ...state, email: null }));
+                          /* Адрес правят — значит красная плашка про занятую
+                             почту говорит уже не про то, что на экране. */
+                          if (emailTaken || fieldErrors.email) clearErrors();
                         }}
                         error={combinedErrors.email}
                       />
